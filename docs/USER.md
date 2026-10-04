@@ -49,6 +49,16 @@ How to get, paste, and rotate the key: **[AUTH.md](AUTH.md)**.
 
 See [DOCKUR.md](DOCKUR.md) for create options (UI, API, `krytonctl --dockur-*`).
 
+## Linux on a KVM host (libvirt)
+
+Linux cloud-image VMs (Ubuntu, Debian, Rocky, AlmaLinux) with cloud-init and SSH keys — **initial host backend, not GA**.
+
+```bash
+./scripts/deploy-remote.sh <host> <user> --key --apikey --provider libvirt
+```
+
+Then fetch an image with an approved checksum and create machines as in [USER-GUIDE.md § Linux operator](USER-GUIDE.md#2b-linux-operator-libvirt). Full setup: [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md).
+
 **Never** run `KRYTON_AUTH_MODE=disabled` on internet-facing hosts.
 
 ## Release checklist (maintainers)

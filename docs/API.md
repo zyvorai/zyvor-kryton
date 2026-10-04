@@ -215,6 +215,24 @@ Finding `status` values: `pass` · `warn` · `fail`. CLI equivalent: `krytonctl 
 
 Validate CPU and memory against the image catalog minimums. Names must be DNS-style labels (≤ 63 characters).
 
+Linux templates (`ubuntu-24.04`, `ubuntu-22.04`, `debian-12`, `debian-13`, `rocky-9`, `almalinux-9`) take the same body plus an optional `initialization` block, rendered into cloud-init. Guests are password-locked, so supply at least one key to log in:
+
+```json
+{
+  "project": "default",
+  "name": "linux-dev",
+  "image": "ubuntu-24.04",
+  "compute": {"cpu": 2, "memoryMiB": 2048},
+  "disk": {"sizeGiB": 20},
+  "initialization": {
+    "username": "ubuntu",
+    "sshAuthorizedKeys": ["ssh-ed25519 AAAA... you@laptop"]
+  }
+}
+```
+
+Linux machines run on the `libvirt` or `kubevirt` provider; see [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md).
+
 ### Lifecycle actions
 
 | Action | Method | Path |

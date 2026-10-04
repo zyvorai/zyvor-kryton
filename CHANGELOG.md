@@ -14,6 +14,7 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - Tests for all Linux and Windows template profiles, real disk/seed provisioning, libvirt XML validation, and Linux template CI.
 - Operator console rebuilt in React + Vite (`web/`) with the netra apple.com design system: light/dark themes, glass nav, metric band, sheet-based create flow, machine drawer with SSH hints; CI typechecks, tests and checks the embedded bundle is current.
 - `deploy-remote.sh --provider` (libvirt preflight and storage setup) and `kryton-image` installation; `KRYTON_E2E_IMAGES` for the boot gate.
+- README, docs site and social cards now present Kryton as a Windows and Linux machine control plane with four providers; new Linux operator guide section, Linux FAQ entries, libvirt in the architecture and deployment comparisons, and Linux `initialization` in the API reference.
 
 ### Fixed
 

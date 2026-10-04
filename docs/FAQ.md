@@ -48,10 +48,21 @@ factory for callers — see the README's "What Kryton is not" section.
 
 **How does the provider abstraction work?** One Go `provider.Provider`
 interface; callers only ever see REST+CloudEvents, never backend-specific
-detail. Three providers translate the same contract: `demo` (in-memory),
+detail. Four providers translate the same contract: `demo` (in-memory),
 `dockur` (real Windows via dockur/windows on Docker/Podman+KVM, lab-grade),
-and `kubevirt` (production Kubernetes VMs via operator-managed golden
-images). See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
+`libvirt` (Linux cloud images on a KVM host, initial backend), and
+`kubevirt` (production Windows and Linux VMs on Kubernetes). See
+[`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
+
+**Does Kryton run Linux?** Yes. Linux guests use the same machine API as
+Windows ones, on the `libvirt` provider (a single KVM host) or on `kubevirt`
+(cloud-init). Guests are configured with a username and SSH public keys and
+are password-locked. See [`docs/LINUX-TEMPLATES.md`](LINUX-TEMPLATES.md).
+
+**Which Linux images?** Six amd64 cloud images: Ubuntu 22.04 and 24.04,
+Debian 12 and 13, Rocky Linux 9, and AlmaLinux 9. Kryton ships no images;
+`kryton-image fetch` downloads them from the distribution and only accepts
+them against an operator-approved SHA-256.
 
 **Does it integrate with other Zyvor products?** Yes — see
 [`docs/ATLAS.md`](ATLAS.md) for the Zyvor Atlas storage control plane
@@ -60,7 +71,8 @@ integration.
 ## Hardware & platform
 
 **What do I need to run it?** Go 1.27.1+; for the `dockur` provider,
-Docker/Podman with KVM; for the `kubevirt` provider, a Kubernetes cluster
+Docker/Podman with KVM; for the `libvirt` provider, KVM with libvirt,
+`qemu-img` and `genisoimage`; for the `kubevirt` provider, a Kubernetes cluster
 with KubeVirt and CDI installed (see [`docs/DEPLOYMENT.md`](DEPLOYMENT.md)
 and [`docs/STORAGE.md`](STORAGE.md) for storage-class requirements).
 

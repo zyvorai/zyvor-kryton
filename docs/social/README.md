@@ -6,18 +6,20 @@ see [`build-social-card.sh`](build-social-card.sh).
 
 | File | Size | Used for |
 | --- | --- | --- |
-| `kryton-share-card.html` → `kryton-share-card.png` | 1200×630 | README hero / Open Graph share card |
+| `kryton-hero-dark.html` → `kryton-hero-dark.jpg` | 2400×1260 | README hero and GitHub social preview (`build-hero-dark.sh`) |
+| `kryton-share-card.html` → `kryton-share-card.png` | 1200×630 | Open Graph share card |
 | `kryton-social-card.html` → `kryton-social-card.jpg` | 1600×900 | Wide social card (X/Twitter, LinkedIn) |
 | `zyvor-mark.svg` | — | Zyvor "Z" mark used in both cards' top-left lockup |
 
 Regenerate after any edit:
 
 ```sh
+./docs/social/build-hero-dark.sh
 ./docs/social/build-social-card.sh
 ```
 
-Every claim shown on the cards (Stable UUIDs, `demo` → `dockur` → `kubevirt`,
-KubeVirt = GA path, `dockur` lab installer not GA, Go 1.23+, Apache-2.0, etc.)
+Every claim shown on the cards (Stable UUIDs, `demo` → `dockur` / `libvirt` → `kubevirt`, Windows and Linux guests,
+KubeVirt = GA path, `dockur` lab installer and `libvirt` initial host backend not GA, six Linux templates, Go 1.27.1+, Apache-2.0, etc.)
 is sourced from the project's top-level `README.md` and the rest of `docs/`.
 If you change wording on a card, verify it against those sources — don't
 invent new claims.

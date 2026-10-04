@@ -11,9 +11,10 @@ Start here, then drill into the guide that matches your role.
 | **Understand what Kryton is and pick a path** | [USER-GUIDE.md](USER-GUIDE.md) · [ARCHITECTURE.md](ARCHITECTURE.md) |
 | **Get / rotate the API key and sign in** | [AUTH.md](AUTH.md) |
 | **Try it locally in 5 minutes (demo)** | [USER-GUIDE.md § Evaluator](USER-GUIDE.md#1-evaluator-local-demo) · [README](https://github.com/zyvorai/zyvor-kryton#quick-start) |
+| **Run Linux VMs (libvirt or KubeVirt)** | [USER-GUIDE.md § Linux operator](USER-GUIDE.md#2b-linux-operator-libvirt) · [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md) · [LINUX-TEST-RESULTS.md](LINUX-TEST-RESULTS.md) |
 | **Run real Windows in a lab (dockur)** | [USER-GUIDE.md § Lab operator](USER-GUIDE.md#2-lab-operator-dockur) · [DOCKUR.md](DOCKUR.md) |
 | **Deploy to a remote Linux host over SSH** | [DEPLOY-REMOTE.md](DEPLOY-REMOTE.md) |
-| **Production Windows on Kubernetes (KubeVirt)** | [USER-GUIDE.md § Production](USER-GUIDE.md#3-production-operator-kubevirt) · [KUBEVIRT.md](KUBEVIRT.md) · [USER.md](USER.md) |
+| **Production Windows and Linux on Kubernetes (KubeVirt)** | [USER-GUIDE.md § Production](USER-GUIDE.md#3-production-operator-kubevirt) · [KUBEVIRT.md](KUBEVIRT.md) · [USER.md](USER.md) |
 | **Build golden images + CDI bootstrap** | [GOLDEN-IMAGES.md](GOLDEN-IMAGES.md) |
 | **Integrate portals / CI via HTTP** | [USER-GUIDE.md § Integrator](USER-GUIDE.md#4-integrator-api--automation) · [API.md](API.md) |
 | **Storage (Rook Ceph / Longhorn / snapshots)** | [STORAGE.md](STORAGE.md) |

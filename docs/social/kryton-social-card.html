@@ -45,13 +45,13 @@
 <div class="bar"></div>
 <div class="wrap">
   <div class="top"><img src="zyvor-mark.svg" alt=""><b>Zyvor</b><span>&middot;</span><span>Kryton</span><span class="r">REST + CloudEvents</span></div>
-  <h1>One API. <em>Real Windows</em> behind it.</h1>
-  <p class="sub">Portals, CI, and automation call one contract. Kubernetes, KubeVirt, and dockur stay behind the provider boundary — stable machine UUIDs end to end.</p>
+  <h1>One API. <em>Real Windows and Linux</em> behind it.</h1>
+  <p class="sub">Portals, CI, and automation call one contract. KubeVirt, libvirt, and dockur stay behind the provider boundary — stable machine UUIDs end to end.</p>
   <div class="flow">
     <div class="step k"><span class="lane">CALL</span><span class="n">1</span>
       <h3>REST + events</h3><p>`krytonctl` or HTTP against `/api/v1/machines` — OpenAPI served from the daemon.</p></div>
     <div class="step a"><span class="lane">ROUTE</span><span class="n">2</span>
-      <h3>Provider pick</h3><p>`demo` for eval, `dockur` for lab KVM hosts, `kubevirt` for production clusters.</p></div>
+      <h3>Provider pick</h3><p>`demo` for eval, `dockur` for Windows labs, `libvirt` for Linux on KVM hosts, `kubevirt` for production.</p></div>
     <div class="step c"><span class="lane">CREATE</span><span class="n">3</span>
       <h3>Machine lifecycle</h3><p>Start, stop, TTL expiry, snapshots — console URLs when the backend supports install progress.</p></div>
     <div class="step o"><span class="lane">SECURE</span><span class="n">4</span>
@@ -59,12 +59,12 @@
     <div class="step o2"><span class="lane">OBSERVE</span><span class="n">5</span>
       <h3>SSE + webhooks</h3><p>CloudEvents history, operator dashboard, `krytonctl doctor` against live backends.</p></div>
   </div>
-  <div class="attr"><span class="tag">MATURITY</span><span>KubeVirt = GA path &nbsp;·&nbsp; dockur lab installer not GA &nbsp;·&nbsp; multi-replica krytond out of scope today</span><span class="why">docs/GA.md</span></div>
+  <div class="attr"><span class="tag">MATURITY</span><span>KubeVirt = GA path &nbsp;·&nbsp; dockur + libvirt not GA yet &nbsp;·&nbsp; single krytond replica</span><span class="why">docs/GA.md</span></div>
   <div class="chips">
-    <span class="chip">Helm chart</span><span class="chip">Golden images</span>
+    <span class="chip">Helm chart</span><span class="chip">Golden images</span><span class="chip">6 Linux templates</span>
     <span class="chip g">Rook / Longhorn</span><span class="chip g">Atlas optional</span><span class="chip g">Apache-2.0</span>
   </div>
-  <div class="foot"><span><b>zyvor.dev/docs/kryton</b></span><span class="r"><span class="dot"></span>Go 1.23+ &middot; Apache-2.0</span></div>
+  <div class="foot"><span><b>zyvor.dev/docs/kryton</b></span><span class="r"><span class="dot"></span>Go 1.27.1+ &middot; Apache-2.0</span></div>
 </div>
 </body>
 </html>

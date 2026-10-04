@@ -39,6 +39,7 @@
   .lbl span { display:block; margin-top:3px; }
   .lbl.box { padding:7px 12px; border-radius:12px; background:rgba(8,10,14,.85); border:1px solid rgba(255,255,255,.14); }
   .lbl.chip { padding:6px 11px; border-radius:13px; font-size:12.5px; font-weight:700; color:#cfe6ff; background:rgba(10,20,35,.85); border:1px solid rgba(41,151,255,.5); box-shadow:0 0 16px rgba(41,151,255,.2); }
+  .lbl.chip span { display:inline; margin:0; }
   .lbl.left { transform:translate(0,-50%); text-align:left; }
   .lbl.right { transform:translate(-100%,-50%); text-align:right; }
   .ok { color:var(--green) !important; } .warn { color:var(--amber) !important; } .bad { color:var(--red) !important; } .sig { color:var(--signal) !important; } .cy { color:var(--cyan) !important; } .vi { color:var(--violet) !important; }
@@ -49,11 +50,11 @@
 <div class="art"><svg id="art" width="680" height="630" viewBox="0 0 680 630" xmlns="http://www.w3.org/2000/svg"></svg></div>
 <div id="labels"></div>
 <div class="copy">
-  <div class="brand"><svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><defs><linearGradient id="zb" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff5a15"/><stop offset="1" stop-color="#cc420a"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#zb)"/><path d="M18.5,20.5 45.5,20.5 18.5,43.5 45.5,43.5" fill="none" stroke="#fff" stroke-width="8.3" stroke-linecap="round" stroke-linejoin="round"/></svg><b>Zyvor</b><span>&middot;</span><span>Windows workload control plane</span></div>
+  <div class="brand"><svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><defs><linearGradient id="zb" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ff5a15"/><stop offset="1" stop-color="#cc420a"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#zb)"/><path d="M18.5,20.5 45.5,20.5 18.5,43.5 45.5,43.5" fill="none" stroke="#fff" stroke-width="8.3" stroke-linecap="round" stroke-linejoin="round"/></svg><b>Zyvor</b><span>&middot;</span><span>Windows + Linux machine control plane</span></div>
   <div class="word">Kryton</div>
-  <div class="tag">One stable machine API.<br><em>Real Windows behind it.</em></div>
-  <div class="lede">One REST and CloudEvents contract for Windows machines, whether the backend is an in-memory demo, dockur/windows in a lab or KubeVirt.</div>
-  <div class="stats"><div class="stat"><b>3</b><span>providers</span></div><div class="stat"><b>2</b><span>Go dependencies</span></div><div class="stat"><b>1</b><span>REST contract</span></div></div>
+  <div class="tag">One stable machine API.<br><em>Real Windows and Linux behind it.</em></div>
+  <div class="lede">One REST and CloudEvents contract for Windows and Linux machines: an in-memory demo, dockur/windows in a lab, libvirt on a KVM host, or KubeVirt.</div>
+  <div class="stats"><div class="stat"><b>4</b><span>providers</span></div><div class="stat"><b>6</b><span>Linux templates</span></div><div class="stat"><b>2</b><span>Go dependencies</span></div></div>
 </div>
 <div class="pill"><span class="b">github.com/zyvorai/zyvor-kryton</span><span>Apache-2.0</span></div>
 <script>
@@ -69,7 +70,7 @@ var Z = (function () {
     c: { blue: '#0071e3', signal: '#2997ff', cyan: '#64d2ff', green: '#30d158', amber: '#ff9f0a', red: '#ff453a', violet: '#bf5af2', teal: '#40c8e0', indigo: '#5e5ce6', pink: '#ff375f', white: '#f5f5f7', grey: '#8e8e93' } };
 })();
 (function () {
-// Kryton: an isometric field of four-pane windows; one floating API slab beams down to three lit machines,
+// Kryton: an isometric field of four-pane windows; one floating API slab beams down to four lit machines,
 // which exchange CloudEvents pulses along the seams.
 var C = Z.c, W = 100, H = 50, N = 5, ox = 390, oy = 236;
 var defs = Z.el('defs', {});
@@ -93,7 +94,7 @@ for (var k = -1; k <= N + 1; k++) {
   Z.el('path', { d: 'M' + pt(iso(-1, k)) + ' L' + pt(iso(N + 1, k)), stroke: 'rgba(100,170,255,.09)' });
 }
 
-var lit = { '3,0': 1, '0,2': 1, '3,3': 1 }, lift = {}, cells = [];
+var lit = { '3,0': 1, '0,2': 1, '3,3': 1, '1,4': 1 }, lift = {}, cells = [];
 for (var i = 0; i < N; i++) for (var j = 0; j < N; j++) {
   var key = i + ',' + j;
   lift[key] = lit[key] ? 26 : [0, 0, 6, 12][Math.floor(Z.rnd() * 4)];
@@ -128,23 +129,24 @@ cells.forEach(function (c) {
 var routes = [
   [[1, 2.5], [1, 3], [3, 3], [3, 3.5]],
   [[3.5, 1], [4, 1], [4, 3.5]],
-  [[0.5, 2], [2, 2], [2, 1], [3, 1]]
+  [[0.5, 2], [2, 2], [2, 1], [3, 1]],
+  [[1, 2.5], [1, 3.5], [1.5, 3.5], [1.5, 4]]
 ];
 routes.forEach(function (rt, n) {
   var d = 'M' + rt.map(function (p) { return pt(iso(p[0], p[1])); }).join(' L');
   Z.el('path', { d: d, fill: 'none', stroke: C.cyan, 'stroke-width': 1.4, opacity: .45, filter: 'url(#kr-gl)' });
   var el = Z.el('path', { d: d, fill: 'none', stroke: 'none' });
-  var L = el.getTotalLength(), t = [0.62, 0.5, 0.42][n];
+  var L = el.getTotalLength(), t = [0.62, 0.5, 0.42, 0.55][n];
   for (var k = 0; k < 9; k++) {
     var q = el.getPointAtLength(Math.max(0, L * t - k * 5));
     Z.el('circle', { cx: f(q.x), cy: f(q.y), r: (3.8 - k * 0.38).toFixed(1), fill: k ? C.cyan : '#fff', opacity: (1 - k * 0.1).toFixed(2), filter: 'url(#kr-gl)' });
   }
 });
 
-// floating API slab with beams down to the three providers
+// floating API slab with beams down to the four providers
 var sc = 2.5, sh = 220, sr = 0.85;
 var slab = quad(sc - sr, sc - sr, sc + sr, sc + sr, sh), slabB = quad(sc - sr, sc - sr, sc + sr, sc + sr, sh - 10);
-['3,0', '0,2', '3,3'].forEach(function (key) {
+['3,0', '0,2', '3,3', '1,4'].forEach(function (key) {
   var t = tops[key], hub = iso(sc, sc, sh - 10);
   Z.el('path', { d: 'M' + f(hub[0] - 6) + ',' + f(hub[1]) + ' L' + f(hub[0] + 6) + ',' + f(hub[1]) + ' L' + f(t[0] + 22) + ',' + f(t[1]) + ' L' + f(t[0] - 22) + ',' + f(t[1]) + 'Z', fill: 'url(#kr-beam)', opacity: .7 });
   Z.el('path', { d: 'M' + pt(hub) + ' L' + pt(t), stroke: C.cyan, 'stroke-width': 1, opacity: .7, 'stroke-dasharray': '2 4' });
@@ -157,12 +159,13 @@ Z.label(sl[0], sl[1], '<b>machine API</b><span>REST &middot; CloudEvents</span>'
 
 // provider chips beside the lit windows
 Z.label(tops['0,2'][0] - 92, tops['0,2'][1] + 4, '<span class="cy">demo</span>', 'chip');
-Z.label(tops['3,0'][0] + 90, tops['3,0'][1] + 4, '<span class="cy">dockur</span>', 'chip');
-Z.label(tops['3,3'][0], tops['3,3'][1] + 82, '<span class="cy">kubevirt</span>', 'chip');
+Z.label(tops['3,0'][0] + 20, tops['3,0'][1] + 62, '<span class="cy">dockur</span> &middot; windows', 'chip');
+Z.label(tops['3,3'][0] + 40, tops['3,3'][1] + 82, '<span class="cy">kubevirt</span> &middot; windows + linux', 'chip');
+Z.label(tops['1,4'][0] - 70, tops['1,4'][1] + 64, '<span class="cy">libvirt</span> &middot; linux', 'chip');
 
 for (var i = 0; i < 40; i++) { var x = 130 + Z.rnd() * 510, y = 30 + Z.rnd() * 110; Z.el('circle', { cx: f(x), cy: f(y), r: (0.8 + Z.rnd() * 1.2).toFixed(1), fill: C.cyan, opacity: (0.12 + Z.rnd() * 0.35).toFixed(2) }); }
 
-Z.label(ox, 585, '<b>lab &rarr; prod, same API</b><span>real Windows behind it</span>');
+Z.label(ox, 585, '<b>lab &rarr; prod, same API</b><span>real Windows and Linux behind it</span>');
 })();
 </script>
 </body>

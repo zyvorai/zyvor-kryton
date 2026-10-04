@@ -58,7 +58,7 @@ cat ~/.kryton/lab.token    # paste into the UI Sign in chapter, or export KRYTON
 
 How to create, rotate, and use keys (browser + CLI + Helm): **[AUTH.md](AUTH.md)**.
 
-**Provider note:** `deploy-remote` installs the **demo** provider (UI + API without Docker). For real Windows guests on this host use `./scripts/harden-lab-services.sh` (dockur / kubevirt) when the container runtime is healthy. Login stays **API-key only** (no SSO) by design.
+**Provider note:** `deploy-remote` installs the **demo** provider (UI + API without Docker) by default. Pass `--provider libvirt` (with `--apikey`) to run Linux VMs on the host's KVM/libvirt — it sets `KRYTON_PROVIDER=libvirt` on the unit and prepares `/var/lib/kryton/machines` and `/var/lib/kryton/images`; see [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md). For real Windows guests on this host use `./scripts/harden-lab-services.sh` (dockur / kubevirt) when the container runtime is healthy. Login stays **API-key only** (no SSO) by design.
 
 If the port is firewalled, tunnel (match your listen port):
 
