@@ -15,6 +15,7 @@ import (
 	"github.com/zyvorai/kryton/internal/imagebuild"
 	"github.com/zyvorai/kryton/internal/model"
 	"github.com/zyvorai/kryton/internal/provider"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -299,14 +300,32 @@ func (p *Provider) get(ctx context.Context, project, machineID string) (*model.M
 	m.UpdatedAt = time.Now().UTC()
 	out, err = p.virsh(ctx, "domifaddr", m.ProviderRef.Name, "--source", "agent")
 	if err == nil {
-		for _, line := range strings.Split(string(out), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) >= 4 && (fields[2] == "ipv4" || fields[2] == "ipv6") {
-				m.IPAddresses = append(m.IPAddresses, strings.Split(fields[3], "/")[0])
-			}
-		}
+		m.IPAddresses = guestAddresses(out)
 	}
 	return &m, nil
+}
+
+// guestAddresses parses `virsh domifaddr --source agent` output. The agent
+// reports every interface, so loopback and link-local addresses are dropped
+// and IPv4 is listed first: clients SSH to IPAddresses[0].
+func guestAddresses(out []byte) []string {
+	var v4, v6 []string
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || (fields[2] != "ipv4" && fields[2] != "ipv6") {
+			continue
+		}
+		ip := net.ParseIP(strings.Split(fields[3], "/")[0])
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+			continue
+		}
+		if ip.To4() != nil {
+			v4 = append(v4, ip.String())
+		} else {
+			v6 = append(v6, ip.String())
+		}
+	}
+	return append(v4, v6...)
 }
 func (p *Provider) Get(ctx context.Context, project, machineID string) (*model.Machine, error) {
 	p.mu.Lock()

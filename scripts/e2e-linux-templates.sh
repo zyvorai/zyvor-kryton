@@ -8,6 +8,7 @@ set -euo pipefail
 KRYTON_URL="${KRYTON_URL:-http://127.0.0.1:8080}"
 KRYTON_PROJECT="${KRYTON_PROJECT:-linux-tests}"
 KRYTON_NAMESPACE="${KRYTON_NAMESPACE:-$KRYTON_PROJECT}"
+read -r -a images <<< "${KRYTON_E2E_IMAGES:-ubuntu-22.04 ubuntu-24.04 debian-12 debian-13 rocky-9 almalinux-9}"
 for tool in curl python3 ssh timeout; do command -v "$tool" >/dev/null; done
 scratch="$(mktemp -d)"
 ids=()
@@ -23,7 +24,7 @@ provider="$(api "$KRYTON_URL/api/v1/capabilities" | python3 -c 'import json,sys;
 [[ "$provider" == libvirt || "$provider" == kubevirt ]] || { echo 'Real libvirt or KubeVirt provider required'; exit 1; }
 if [[ "$provider" == kubevirt ]]; then command -v virtctl >/dev/null; fi
 api "$KRYTON_URL/api/v1/images" > "$scratch/images.json"
-for image in ubuntu-22.04 ubuntu-24.04 debian-12 debian-13 rocky-9 almalinux-9; do
+for image in "${images[@]}"; do
   name="linux-test-${image//./-}-$(date +%s)"
   python3 - "$scratch/images.json" "$image" "$name" "$KRYTON_PROJECT" "$SSH_KEY.pub" > "$scratch/request.json" <<'PY'
 import json,sys
@@ -71,4 +72,5 @@ PY
   printf '%s: boot, SSH, cloud-init, guest agent, disk expansion passed\n' "$image"
   if [[ -n "$pf" ]]; then kill "$pf"; wait "$pf" || true; pf="";fi
   api -X DELETE "$KRYTON_URL/api/v1/machines/$id?project=$KRYTON_PROJECT" >/dev/null
+  unset 'ids[${#ids[@]}-1]'
  done

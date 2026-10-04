@@ -59,11 +59,31 @@ func (f *fakeRunner) Run(ctx context.Context, name string, args ...string) ([]by
 		case "domstate":
 			return []byte(f.state), nil
 		case "domifaddr":
-			return []byte("vnet0 00:11:22:33:44:55 ipv4 192.0.2.1/24\n"), nil
+			return []byte(agentAddrs), nil
 		}
 	}
 	return nil, nil
 }
+
+const agentAddrs = ` Name       MAC address          Protocol     Address
+-------------------------------------------------------------------------------
+ lo         00:00:00:00:00:00    ipv4         127.0.0.1/8
+ -          -                    ipv6         ::1/128
+ enp1s0     52:54:00:8a:2a:83    ipv4         192.0.2.1/24
+ -          -                    ipv6         2001:db8::7/64
+ -          -                    ipv6         fe80::5054:ff:fe8a:2a83/64
+`
+
+func TestGuestAddressesSkipLoopbackAndLinkLocal(t *testing.T) {
+	got := guestAddresses([]byte(agentAddrs))
+	if want := []string{"192.0.2.1", "2001:db8::7"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("guestAddresses = %v, want %v", got, want)
+	}
+	if got := guestAddresses(nil); len(got) != 0 {
+		t.Fatalf("empty output = %v", got)
+	}
+}
+
 func prepareImage(t *testing.T, dir string, img model.Image, data []byte) {
 	t.Helper()
 	sum := sha256.Sum256(data)
@@ -112,7 +132,7 @@ func TestAllLinuxLibvirtTemplatesLifecycleAndRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.State != model.StateRunning || len(got.IPAddresses) != 1 {
+			if got.State != model.StateRunning || len(got.IPAddresses) != 2 || got.IPAddresses[0] != "192.0.2.1" {
 				t.Fatalf("recovery failed: %+v", got)
 			}
 			if _, err = restarted.Get(ctx, "other", m.ID); !errors.Is(err, provider.ErrNotFound) {
@@ -193,6 +213,10 @@ func TestAllLibvirtDomainXML(t *testing.T) {
 			}
 			if len(domain.Devices.Disks) != 2 || domain.Devices.Disks[0].Source.File != "/images/a'&b.qcow2" {
 				t.Fatal("disk path changed")
+			}
+			// Debian's cloud kernel ships no AHCI driver, so a SATA seed is invisible.
+			if strings.Contains(text, "bus='sata'") || !strings.Contains(text, "model='virtio-scsi'") {
+				t.Fatal("seed CD-ROM must sit on virtio-scsi")
 			}
 			if validator != "" {
 				path := filepath.Join(t.TempDir(), "domain.xml")
