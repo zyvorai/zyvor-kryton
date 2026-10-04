@@ -35,9 +35,12 @@ func (s *Server) staticHandler() http.Handler {
 		if ct := mime.TypeByExtension(path.Ext(p)); ct != "" {
 			w.Header().Set("Content-Type", ct)
 		}
-		if p == "index.html" {
+		switch {
+		case p == "index.html":
 			w.Header().Set("Cache-Control", "no-store")
-		} else {
+		case strings.HasPrefix(p, "assets/"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		default:
 			w.Header().Set("Cache-Control", "public, max-age=3600")
 		}
 		http.ServeContent(w, r, p, time.Time{}, bytes.NewReader(data))

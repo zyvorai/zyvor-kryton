@@ -1,6 +1,6 @@
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: run build test race vet fmt check vulncheck lint demo image deploy-remote harden-lab bootstrap-kubevirt setup-kubevirt setup-kubevirt-production run-kubevirt-production-remote build-golden enable-kubevirt-snapshots enable-rook-ceph
+.PHONY: run build test race vet fmt check web web-check vulncheck lint demo image deploy-remote harden-lab bootstrap-kubevirt setup-kubevirt setup-kubevirt-production run-kubevirt-production-remote build-golden enable-kubevirt-snapshots enable-rook-ceph
 
 run:
 	go run ./cmd/krytond
@@ -32,7 +32,18 @@ vulncheck:
 lint:
 	golangci-lint run ./...
 
-check: fmt test vet build
+check: fmt test vet build web-check
+
+# Rebuild the operator console into cmd/krytond/web (committed, so Go builds need no Node).
+web:
+	cd web && npm ci && npm run build
+
+web-check:
+	@if command -v npm >/dev/null 2>&1 && [ -d web/node_modules ]; then \
+		cd web && npm run typecheck && npm test; \
+	else \
+		echo "skip web-check (run: cd web && npm ci)"; \
+	fi
 
 image:
 	docker build -t kryton:dev .
