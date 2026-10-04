@@ -160,9 +160,9 @@ When `network.networkId` is empty, the KubeVirt provider creates a pod network w
 
 ## Provider comparison
 
-| | demo | dockur | kubevirt |
-|---|------|--------|----------|
-| **Target** | Local eval | Lab Linux host | Production K8s |
-| **Persistence** | In-memory | Compose on disk | Kubernetes etcd |
-| **Auth default** | disabled | disabled (use apikey) | apikey required |
-| **Real Windows** | No | Yes | Yes (golden images) |
+| | demo | dockur | libvirt | kubevirt |
+|---|------|--------|---------|----------|
+| **Target** | Local eval | Lab Linux host | KVM host | Production K8s |
+| **Persistence** | In-memory | Compose on disk | libvirt domains + disk | Kubernetes etcd |
+| **Auth default** | disabled | disabled (use apikey) | apikey required | apikey required |
+| **Guest OS** | None (fake) | Windows | Linux cloud images | Windows (golden images) and Linux (cloud images) |

@@ -35,12 +35,13 @@
   .api b { color:var(--deep); }
   .vline { position:absolute; background:var(--hair); }
   .v-main { top:94px; left:50%; width:2px; height:44px; transform:translateX(-1px); }
-  .hline { position:absolute; top:138px; left:8px; right:8px; height:2px; background:var(--hair); }
-  .v-l { top:138px; left:8px; width:2px; height:40px; background:var(--hair); }
-  .v-m { top:138px; left:50%; width:2px; height:40px; background:var(--hair); transform:translateX(-1px); }
-  .v-r { top:138px; right:8px; width:2px; height:40px; background:var(--hair); }
+  .hline { position:absolute; top:138px; left:52px; right:52px; height:2px; background:var(--hair); }
+  .v-l { top:138px; left:51px; width:2px; height:40px; background:var(--hair); }
+  .v-m { top:138px; left:170px; width:2px; height:40px; background:var(--hair); }
+  .v-m2 { top:138px; left:288px; width:2px; height:40px; background:var(--hair); }
+  .v-r { top:138px; right:51px; width:2px; height:40px; background:var(--hair); }
   .row3 { position:absolute; top:178px; left:0; right:0; display:flex; justify-content:space-between; }
-  .row3 .dbox { position:static; width:138px; height:78px; }
+  .row3 .dbox { position:static; width:104px; height:78px; }
   .row3 .hi { background:linear-gradient(180deg,var(--signal),var(--signal2)); border-color:var(--signal); }
   .row3 .hi b, .row3 .hi span { color:#fff; }
   .row3 .hi { position:relative; }
@@ -54,36 +55,39 @@
 <body>
 <div class="bar"></div>
 <div class="wrap">
-  <div class="top"><img src="zyvor-mark.svg" alt=""><b>Zyvor</b><span>&middot;</span><span>Kryton</span><span class="r">Windows control plane</span></div>
+  <div class="top"><img src="zyvor-mark.svg" alt=""><b>Zyvor</b><span>&middot;</span><span>Kryton</span><span class="r">Windows + Linux control plane</span></div>
   <div class="body">
     <div class="left">
-      <h1>One API.<br><em>Real Windows</em> behind it.</h1>
-      <p class="sub">Provider-neutral REST + CloudEvents for Windows workloads — demo, dockur lab, or KubeVirt production without leaking backend YAML to callers. Apache-2.0.</p>
+      <h1>One API.<br><em>Real Windows and Linux</em> behind it.</h1>
+      <p class="sub">Provider-neutral REST + CloudEvents for Windows and Linux machines — demo, dockur lab, libvirt host, or KubeVirt production, without leaking backend YAML to callers.</p>
       <div class="chips">
         <span class="chip">Stable UUIDs</span>
         <span class="chip">API keys + SSE</span>
+        <span class="chip">6 Linux templates</span>
         <span class="chip g">Operator UI</span>
         <span class="chip g">No Windows media shipped</span>
       </div>
     </div>
     <div class="right">
       <div class="diagram">
-        <div class="dcap">One contract, three providers</div>
+        <div class="dcap">One contract, four providers</div>
         <div class="dbox api"><b>Kryton API</b><span>REST + CloudEvents</span></div>
         <div class="vline v-main"></div>
         <div class="hline"></div>
         <div class="vline v-l"></div>
         <div class="vline v-m"></div>
+        <div class="vline v-m2"></div>
         <div class="vline v-r"></div>
         <div class="row3">
           <div class="dbox"><b>demo</b><span>in-memory</span></div>
           <div class="dbox"><b>dockur</b><span>lab</span></div>
+          <div class="dbox"><b>libvirt</b><span>host</span></div>
           <div class="dbox hi"><b>kubevirt</b><span>GA</span><i class="dot"></i></div>
         </div>
       </div>
     </div>
   </div>
-  <div class="foot"><span><b>zyvor.dev/kryton</b></span><span class="r">Go 1.23+ &middot; Apache-2.0</span></div>
+  <div class="foot"><span><b>zyvor.dev/kryton</b></span><span class="r">Go 1.27.1+ &middot; Apache-2.0</span></div>
 </div>
 </body>
 </html>

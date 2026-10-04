@@ -4,7 +4,7 @@ hero:
   title: Kryton user guide
 ---
 
-How to use Kryton from first eval through production KubeVirt. One API — three providers.
+How to use Kryton from first eval through production KubeVirt. One API — four providers, Windows and Linux guests.
 
 ---
 
@@ -14,6 +14,7 @@ How to use Kryton from first eval through production KubeVirt. One API — three
 |----------|----------|------|------------|
 | Evaluating the UI/API locally | `demo` | disabled | [§1 Evaluator](#1-evaluator-local-demo) |
 | Running real Windows in a lab | `dockur` | apikey on shared hosts | [§2 Lab operator](#2-lab-operator-dockur) |
+| Running Linux VMs on a KVM host | `libvirt` | apikey | [§2b Linux operator](#2b-linux-operator-libvirt) |
 | Operating production K8s estates | `kubevirt` | apikey + TLS | [§3 Production](#3-production-operator-kubevirt) |
 | Wiring a portal or CI pipeline | any | apikey or proxy | [§4 Integrator](#4-integrator-api-automation) |
 
@@ -176,6 +177,44 @@ Full dockur option matrix: [DOCKUR.md](DOCKUR.md).
 | `windows-server-2022` | Server 2022 |
 | `windows-server-2019` | Server 2019 |
 | `windows-server-2016` | Server 2016 |
+
+---
+
+## 2b. Linux operator (libvirt)
+
+**Goal:** Linux cloud-image VMs (Ubuntu 22.04/24.04, Debian 12/13, Rocky 9, AlmaLinux 9) on one KVM host, without Docker or Kubernetes.
+
+**Host needs:** KVM, libvirt (`virsh`), `qemu-img`, `genisoimage`, and a libvirt network with DHCP (default `default`).
+
+### Deploy
+
+```bash
+./scripts/deploy-remote.sh <host> <user> --key --apikey --provider libvirt
+```
+
+This installs krytond as a systemd unit with `KRYTON_PROVIDER=libvirt` and API-key auth, and creates `/var/lib/kryton/machines` (setgid, owned by the QEMU group) and `/var/lib/kryton/images`. The token is in `/etc/kryton/lab.token`.
+
+### Fetch an image
+
+```bash
+bin/kryton-image fetch --image ubuntu-24.04 --dir /var/lib/kryton/images --sha256 "$APPROVED_SHA256"
+```
+
+Kryton requires an approved digest taken from the distribution's signed checksum manifest; it never trusts a checksum fetched beside the image. Fetched images show as available in the UI's image picker.
+
+### Create and connect
+
+```bash
+export KRYTON_TOKEN=$(sudo cat /etc/kryton/lab.token)
+krytonctl create --image ubuntu-24.04 --cpu 2 --memory 2048 --disk 20 \
+  --ssh-key ~/.ssh/id_ed25519.pub linux-dev
+```
+
+In the UI, pick a Linux template, paste your SSH public key, and create. Once running, the machine drawer shows the guest IP and a ready-to-copy `ssh` command. The libvirt provider has no browser console or snapshots yet; Linux guests on KubeVirt get both. Over the API, set `initialization.username` and `initialization.sshAuthorizedKeys` on create.
+
+Guests are password-locked; access is by SSH key only. libvirt is an initial host backend, not GA. Full setup, image verification and host permissions: [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md). Host test evidence: [LINUX-TEST-RESULTS.md](LINUX-TEST-RESULTS.md).
+
+**Linux on KubeVirt:** publish a fetched image as a CDI `DataSource` with `kryton-image cdi`, then create the same way against the `kubevirt` provider.
 
 ---
 

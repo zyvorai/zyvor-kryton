@@ -1,5 +1,5 @@
 site_name: Kryton
-site_description: Windows virtualization control plane — one stable machine API over demo, dockur, and KubeVirt backends.
+site_description: Windows and Linux machine control plane — one stable machine API over demo, dockur, libvirt, and KubeVirt backends.
 site_url: https://zyvorai.github.io/zyvor-kryton/
 repo_url: https://github.com/zyvorai/zyvor-kryton
 repo_name: zyvorai/kryton
@@ -53,6 +53,7 @@ nav:
       - Remote deployment: DEPLOY-REMOTE.md
       - KubeVirt Windows VMs: KUBEVIRT.md
       - Dockur lab provider: DOCKUR.md
+      - Linux on libvirt and KubeVirt: LINUX-TEMPLATES.md
       - Golden images: GOLDEN-IMAGES.md
       - Storage: STORAGE.md
       - Atlas integration: ATLAS.md
@@ -60,6 +61,7 @@ nav:
       - Architecture: ARCHITECTURE.md
       - API reference: API.md
       - GA path: GA.md
+      - Linux test results: LINUX-TEST-RESULTS.md
 extra:
   social:
     - {icon: fontawesome/brands/github, link: https://github.com/zyvorai/zyvor-kryton}

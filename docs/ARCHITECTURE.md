@@ -4,14 +4,14 @@ hero:
   title: Kryton architecture
   lead: >-
     Callers see one stable machine API; providers translate it into demo
-    state, dockur compose stacks, or KubeVirt VirtualMachines.
+    state, dockur compose stacks, libvirt domains, or KubeVirt VirtualMachines.
   highlights:
-    - {value: "3", label: "Providers behind one contract — demo, dockur, KubeVirt"}
+    - {value: "4", label: "Providers behind one contract — demo, dockur, libvirt, KubeVirt"}
     - {value: "1", label: "krytond replica — no leader election in the TTL reconciler or event bus yet"}
     - {value: "SHA-256", label: "API keys stored as digests — raw tokens never persisted"}
 ---
 
-Kryton is deliberately split at the **provider boundary**. Callers see one stable machine API; providers translate it into demo state, dockur compose stacks, or KubeVirt VirtualMachines.
+Kryton is deliberately split at the **provider boundary**. Callers see one stable machine API; providers translate it into demo state, dockur compose stacks, libvirt domains, or KubeVirt VirtualMachines. Windows and Linux guests share the same contract; Linux guests are configured through `initialization` (cloud-init user and SSH keys).
 
 ```text
 Consumers
@@ -23,13 +23,13 @@ Consumers
                          |
              provider.Provider contract
                          |
-        +---------+------+-----------+
-        |         |                  |
-     demo      dockur            KubeVirt
-                  |                  |
-           dockur/windows     Kubernetes REST
-           (Docker/Podman+KVM)       |
-                               QEMU / KVM VMs
+        +---------+---------+---------+-----------+
+        |         |         |                     |
+     demo      dockur    libvirt              KubeVirt
+                  |         |                     |
+           dockur/windows  virsh + qemu-img   Kubernetes REST
+           (Docker/Podman  (Linux cloud            |
+            + KVM)          images, KVM)     QEMU / KVM VMs
                                      │
                           CSI disks (Rook / Longhorn)
                           optional Atlas discovery
@@ -45,7 +45,7 @@ Consumers
     |---|---|
     | Use case | Local eval, CI smoke tests |
     | Source of truth | In-memory map |
-    | Real Windows | No — instant fake machines for eval |
+    | Guests | None — instant fake machines for eval |
 
     Intentionally in-memory; data is lost on restart.
 
@@ -55,9 +55,19 @@ Consumers
     |---|---|
     | Use case | Lab hosts with Docker/Podman + KVM |
     | Source of truth | Compose state under `KRYTON_DOCKUR_DATA_DIR` |
-    | Real Windows | Yes — via [dockur/windows](https://github.com/dockur/windows) |
+    | Guests | Windows via [dockur/windows](https://github.com/dockur/windows) |
 
     Compose projects and disk images persist under `KRYTON_DOCKUR_DATA_DIR`. See [DOCKUR.md](DOCKUR.md) for the lab provider.
+
+=== "Libvirt"
+
+    | | |
+    |---|---|
+    | Use case | A single KVM host without Docker or Kubernetes |
+    | Source of truth | libvirt domains plus metadata under `KRYTON_LIBVIRT_DATA_DIR` |
+    | Guests | Linux cloud images (Ubuntu, Debian, Rocky, AlmaLinux) with cloud-init |
+
+    Images come from `kryton-image fetch` against an approved SHA-256; each machine gets a QCOW2 overlay and a cloud-init seed. Initial host backend, not GA. See [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md).
 
 === "KubeVirt"
 
@@ -65,7 +75,7 @@ Consumers
     |---|---|
     | Use case | Production Kubernetes estates |
     | Source of truth | Kubernetes API |
-    | Real Windows | Yes — operator-managed golden images via CDI |
+    | Guests | Windows golden images and Linux cloud images via CDI `DataSource` objects |
 
     Kubernetes is authoritative. Kryton is stateless with respect to machine inventory and can be restarted without losing machine identity. See [DEPLOYMENT.md](DEPLOYMENT.md) for production.
 

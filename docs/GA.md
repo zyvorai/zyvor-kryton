@@ -4,7 +4,7 @@ hero:
   title: Kryton GA path (KubeVirt)
 ---
 
-Production Kryton is the **kubevirt** provider behind Helm, hashed API keys, and TLS (ingress or process certificates). Dockur on `:7088` remains a lab installer, not GA.
+Production Kryton is the **kubevirt** provider behind Helm, hashed API keys, and TLS (ingress or process certificates). Dockur on `:7088` remains a lab installer, not GA, and the native `libvirt` provider for Linux is an initial host backend, not GA (Linux on `kubevirt` follows the KubeVirt GA path).
 
 ## Must-have (implemented)
 
@@ -38,4 +38,5 @@ Production Kryton is the **kubevirt** provider behind Helm, hashed API keys, and
 - Live migration / HA replicas (`liveMigration` remains false) — this is about the KubeVirt **guest VM**; it's separate from krytond's own replica count below.
 - Multiple `krytond` replicas (`replicaCount: 1` only) — `internal/reconciler/ttl.go` has no leader election and `internal/events/events.go`'s history/SSE fan-out is in-process, so scaling out krytond itself is unsafe until both are fixed. See [ARCHITECTURE.md](ARCHITECTURE.md).
 - Dockur snapshots.
+- The `libvirt` provider (single-host Linux) and its snapshots.
 - Microsoft media, product keys, and Windows licensing (operator-owned).
