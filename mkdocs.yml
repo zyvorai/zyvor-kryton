@@ -1,7 +1,7 @@
 site_name: Kryton
 site_description: Windows virtualization control plane — one stable machine API over demo, dockur, and KubeVirt backends.
-site_url: https://zyvorai.github.io/kryton/
-repo_url: https://github.com/zyvorai/kryton
+site_url: https://zyvorai.github.io/zyvor-kryton/
+repo_url: https://github.com/zyvorai/zyvor-kryton
 repo_name: zyvorai/kryton
 edit_uri: edit/main/docs/
 docs_dir: docs
@@ -62,4 +62,4 @@ nav:
       - GA path: GA.md
 extra:
   social:
-    - {icon: fontawesome/brands/github, link: https://github.com/zyvorai/kryton}
+    - {icon: fontawesome/brands/github, link: https://github.com/zyvorai/zyvor-kryton}
