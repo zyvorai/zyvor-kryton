@@ -1,6 +1,6 @@
 module github.com/zyvorai/kryton
 
-go 1.26.0
+go 1.26.6
 
 require github.com/gorilla/websocket v1.5.3
 

@@ -153,3 +153,6 @@ footer{text-align:center;color:var(--faint);font-size:9px;padding:28px 0 8px}foo
 .images-empty{padding:28px;border-radius:20px;border:1px dashed var(--line);color:var(--soft);font-size:13px;text-align:center}
 [data-theme="dark"] .image-card{box-shadow:0 18px 45px rgba(0,0,0,.28)}
 [data-theme="dark"] .image-card:hover{box-shadow:0 24px 60px rgba(0,0,0,.38)}
+
+#createLinuxFields[hidden]{display:none!important}
+#createLinuxFields textarea{width:100%;border:1px solid var(--line-strong);background:var(--bg);color:var(--text);border-radius:12px;padding:10px 12px;font:inherit;resize:vertical}

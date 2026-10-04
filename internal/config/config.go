@@ -54,6 +54,10 @@ type Config struct {
 	Kubernetes     Kubernetes
 	TLS            TLS
 	Dockur         Dockur
+	LibvirtURI     string
+	LibvirtDataDir string
+	LinuxImageDir  string
+	LibvirtNetwork string
 }
 
 // Dockur configures the dockur provider: which container runtime to
@@ -93,6 +97,10 @@ type TLS struct {
 func Load() (Config, error) {
 	projects := splitCSV(getenv("KRYTON_PROJECTS", "default"))
 	cfg := Config{
+		LibvirtURI:         getenv("KRYTON_LIBVIRT_URI", "qemu:///system"),
+		LibvirtDataDir:     getenv("KRYTON_LIBVIRT_DATA_DIR", "/var/lib/kryton/machines"),
+		LinuxImageDir:      getenv("KRYTON_LINUX_IMAGE_DIR", "/var/lib/kryton/images"),
+		LibvirtNetwork:     getenv("KRYTON_LIBVIRT_NETWORK", "default"),
 		Addr:               getenv("KRYTON_ADDR", ":8080"),
 		Provider:           strings.ToLower(getenv("KRYTON_PROVIDER", "demo")),
 		Projects:           projects,
@@ -159,9 +167,9 @@ func Load() (Config, error) {
 // consistency, namespace validity, and the insecure-mode opt-in rules.
 func (c Config) Validate() error {
 	switch c.Provider {
-	case "demo", "kubevirt", "dockur":
+	case "demo", "kubevirt", "dockur", "libvirt":
 	default:
-		return fmt.Errorf("unsupported KRYTON_PROVIDER %q (demo|kubevirt|dockur)", c.Provider)
+		return fmt.Errorf("unsupported KRYTON_PROVIDER %q (demo|kubevirt|dockur|libvirt)", c.Provider)
 	}
 	if len(c.Projects) == 0 {
 		return errors.New("at least one KRYTON_PROJECTS entry is required")

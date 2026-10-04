@@ -85,11 +85,13 @@ type DockurOptions struct {
 // It is echoed back on Machine.Spec so the original request survives
 // provider translation (e.g. into a KubeVirt VirtualMachine).
 type MachineSpec struct {
-	Name    string      `json:"name"`
-	Image   string      `json:"image"`
-	Compute ComputeSpec `json:"compute"`
-	Disk    DiskSpec    `json:"disk"`
-	Network NetworkSpec `json:"network,omitempty"`
+	Name string `json:"name"`
+	// Initialization is Linux NoCloud configuration; raw scripts/secrets are not accepted.
+	Initialization *Initialization `json:"initialization,omitempty"`
+	Image          string          `json:"image"`
+	Compute        ComputeSpec     `json:"compute"`
+	Disk           DiskSpec        `json:"disk"`
+	Network        NetworkSpec     `json:"network,omitempty"`
 	// TTLMinutes schedules automatic deletion by internal/reconciler; 0 means no expiry.
 	TTLMinutes int               `json:"ttlMinutes,omitempty"`
 	Labels     map[string]string `json:"labels,omitempty"`
@@ -156,14 +158,20 @@ type Snapshot struct {
 // (internal/catalog), optionally enriched with live storage state by
 // internal/images.
 type Image struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Version       string `json:"version"`
-	Family        string `json:"family"`
-	Description   string `json:"description"`
-	MinCPU        int    `json:"minCpu"`
-	MinMemoryMiB  int    `json:"minMemoryMiB"`
-	DefaultDiskGB int    `json:"defaultDiskGiB"`
+	OS            string   `json:"os,omitempty"`
+	Architecture  string   `json:"architecture,omitempty"`
+	Firmware      string   `json:"firmware,omitempty"`
+	DefaultUser   string   `json:"defaultUser,omitempty"`
+	SourceURL     string   `json:"sourceUrl,omitempty"`
+	Providers     []string `json:"providers,omitempty"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Version       string   `json:"version"`
+	Family        string   `json:"family"`
+	Description   string   `json:"description"`
+	MinCPU        int      `json:"minCpu"`
+	MinMemoryMiB  int      `json:"minMemoryMiB"`
+	DefaultDiskGB int      `json:"defaultDiskGiB"`
 	// DockurVersion is the dockur/windows VERSION env value this image maps to; empty for kubevirt-only images.
 	DockurVersion    string   `json:"dockurVersion,omitempty"`
 	Tags             []string `json:"tags,omitempty"`
@@ -243,6 +251,11 @@ func ValidateProject(p string) error {
 // joined into a single error rather than failing on the first one.
 func ValidateMachineSpec(s MachineSpec) error {
 	var problems []string
+	if s.Initialization != nil {
+		if err := s.Initialization.Validate(); err != nil {
+			problems = append(problems, err.Error())
+		}
+	}
 	if len(s.Name) < 1 || len(s.Name) > 63 || !dnsLabel.MatchString(s.Name) {
 		problems = append(problems, "name must be a DNS-style label up to 63 characters")
 	}

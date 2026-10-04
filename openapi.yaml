@@ -433,8 +433,19 @@ components:
           properties:
             networkId: {type: string}
         ttlMinutes: {type: integer, minimum: 0, maximum: 43200}
+        initialization:
+          $ref: "#/components/schemas/LinuxInitialization"
         dockur:
           $ref: '#/components/schemas/DockurOptions'
+    LinuxInitialization:
+      type: object
+      additionalProperties: false
+      properties:
+        username: {type: string, pattern: "^[a-z_][a-z0-9_-]{0,31}$"}
+        sshAuthorizedKeys:
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 16384}
     DockurOptions:
       type: object
       description: dockur/windows create options (provider=dockur only). Password is write-only.

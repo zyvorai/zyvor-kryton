@@ -196,8 +196,14 @@ func TestPutSettingsRejectsEmptyDefaultProject(t *testing.T) {
 }
 
 func TestPutSettingsUpdatesEventWebhookURL(t *testing.T) {
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	defer hook.Close()
+	payload, err := json.Marshal(map[string]string{"eventWebhookUrl": hook.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	h, _ := testServerWithSettingsStore(t)
-	body := bytes.NewBufferString(`{"eventWebhookUrl":"https://hooks.example/kryton"}`)
+	body := bytes.NewBuffer(payload)
 	r := httptest.NewRequest(http.MethodPut, "/api/v1/settings", body)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -209,15 +215,21 @@ func TestPutSettingsUpdatesEventWebhookURL(t *testing.T) {
 			EventWebhookURL string `json:"eventWebhookUrl"`
 		} `json:"runtime"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil || view.Runtime.EventWebhookURL != "https://hooks.example/kryton" {
+	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil || view.Runtime.EventWebhookURL != hook.URL {
 		t.Fatalf("unexpected view %+v err=%v", view, err)
 	}
 }
 
 func TestPutSettingsForbiddenForViewerRole(t *testing.T) {
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	defer hook.Close()
+	payload, err := json.Marshal(map[string]string{"eventWebhookUrl": hook.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
 	h, viewerToken, adminToken := testServerAPIKeyRoles(t)
 
-	body := bytes.NewBufferString(`{"eventWebhookUrl":"https://hooks.example/kryton"}`)
+	body := bytes.NewBuffer(payload)
 	r := httptest.NewRequest(http.MethodPut, "/api/v1/settings", body)
 	r.Header.Set("Authorization", "Bearer "+viewerToken)
 	w := httptest.NewRecorder()
@@ -226,7 +238,7 @@ func TestPutSettingsForbiddenForViewerRole(t *testing.T) {
 		t.Fatalf("expected 403 for viewer, got %d: %s", w.Code, w.Body.String())
 	}
 
-	body = bytes.NewBufferString(`{"eventWebhookUrl":"https://hooks.example/kryton"}`)
+	body = bytes.NewBuffer(payload)
 	r = httptest.NewRequest(http.MethodPut, "/api/v1/settings", body)
 	r.Header.Set("Authorization", "Bearer "+adminToken)
 	w = httptest.NewRecorder()

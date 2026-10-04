@@ -55,6 +55,11 @@ func Run(ctx context.Context, in Input) model.DoctorReport {
 	add(checkGuestkit())
 
 	switch in.Provider.Name() {
+	case "libvirt":
+		add(checkBinary("virsh", "libvirt lifecycle"))
+		add(checkBinary("qemu-img", "Linux disk provisioning"))
+		add(checkBinary("genisoimage", "NoCloud seed media"))
+		add(checkKVM())
 	case "dockur":
 		add(checkBinary(firstNonEmpty(in.Runtime, "docker"), "Container runtime for dockur/windows lab VMs"))
 		add(checkCompose(firstNonEmpty(in.Runtime, "docker")))

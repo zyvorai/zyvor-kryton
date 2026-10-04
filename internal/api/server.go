@@ -379,6 +379,14 @@ func (s *Server) createMachine(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, r, "image is not present in the Kryton image catalog")
 		return
 	}
+	if !img.SupportsProvider(s.p.Name()) {
+		s.badRequest(w, r, "image does not support this provider")
+		return
+	}
+	if req.Initialization != nil && img.OS != "linux" {
+		s.badRequest(w, r, "initialization is only supported for Linux")
+		return
+	}
 	if req.Compute.CPU < img.MinCPU || req.Compute.MemoryMiB < img.MinMemoryMiB {
 		s.badRequest(w, r, fmt.Sprintf("image requires at least %d CPU and %d MiB memory", img.MinCPU, img.MinMemoryMiB))
 		return

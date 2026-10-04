@@ -1,0 +1,33 @@
+# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+# SPDX-License-Identifier: Apache-2.0
+name: Linux templates
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.34.0
+      - name: Real disk and libvirt schema tools
+        run: sudo apt-get update && sudo apt-get install -y qemu-utils genisoimage libvirt-clients libxml2-utils
+      - name: Templates and regression tests
+        run: go test -race ./...
+      - name: Vet and build
+        run: go vet ./... && make build
+      - name: Image CLI validation
+        run: bin/kryton-image validate
+      - name: Syntax and license headers
+        run: |
+          node --check cmd/krytond/web/app.js
+          bash -n scripts/e2e-linux-templates.sh
+          ./scripts/add-license-headers.sh --check

@@ -12,6 +12,7 @@ build:
 	mkdir -p bin
 	CGO_ENABLED=0 go build -trimpath -o bin/krytond ./cmd/krytond
 	CGO_ENABLED=0 go build -trimpath -o bin/krytonctl ./cmd/krytonctl
+	CGO_ENABLED=0 go build -trimpath -o bin/kryton-image ./cmd/kryton-image
 
 test:
 	go test ./...

@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zyvorai/kryton/internal/catalog"
 	"github.com/zyvorai/kryton/internal/id"
 	"github.com/zyvorai/kryton/internal/kubeapi"
 	"github.com/zyvorai/kryton/internal/model"
@@ -38,6 +39,7 @@ const (
 // defaults; ImageNamespace and StorageClass can be changed afterward via
 // SetImageNamespace/SetStorageClass (Settings → Storage does this at runtime).
 type Config struct {
+	Catalog         *catalog.Catalog
 	Client          *kubeapi.Client
 	NamespacePrefix string
 	ImageNamespace  string
@@ -49,6 +51,7 @@ type Config struct {
 // the mutable ImageNamespace/StorageClass defaults, guarded by mu since
 // they can be updated live via the Settings API. Safe for concurrent use.
 type Provider struct {
+	catalog                         *catalog.Catalog
 	client                          *kubeapi.Client
 	namespacePrefix, imageNamespace string
 	mu                              sync.RWMutex
@@ -58,7 +61,7 @@ type Provider struct {
 // New builds a kubevirt Provider from cfg. It performs no I/O; namespaces
 // and RBAC are created lazily on first Create per project.
 func New(cfg Config) *Provider {
-	return &Provider{client: cfg.Client, namespacePrefix: cfg.NamespacePrefix, imageNamespace: cfg.ImageNamespace, storageClass: cfg.StorageClass}
+	return &Provider{catalog: cfg.Catalog, client: cfg.Client, namespacePrefix: cfg.NamespacePrefix, imageNamespace: cfg.ImageNamespace, storageClass: cfg.StorageClass}
 }
 func (p *Provider) Name() string                    { return "kubevirt" }
 func (p *Provider) namespace(project string) string { return p.namespacePrefix + project }
@@ -135,6 +138,16 @@ func (p *Provider) ConsoleTarget(ctx context.Context, project, machineID string)
 }
 
 func (p *Provider) Create(ctx context.Context, project string, spec model.MachineSpec) (*model.Machine, error) {
+	if err := model.ValidateMachineSpec(spec); err != nil {
+		return nil, err
+	}
+	img, err := resolveImage(p.catalog, spec.Image)
+	if err != nil {
+		return nil, err
+	}
+	if spec.Initialization != nil && img.OS != "linux" {
+		return nil, fmt.Errorf("initialization is only supported for Linux")
+	}
 	if err := EnsureNamespaces(ctx, p.client, p.namespacePrefix, []string{project}); err != nil {
 		return nil, err
 	}
@@ -213,6 +226,9 @@ func (p *Provider) Create(ctx context.Context, project string, spec model.Machin
 				},
 			},
 		},
+	}
+	if err := applyImageProfile(vm, img, spec); err != nil {
+		return nil, err
 	}
 	var created map[string]any
 	path := fmt.Sprintf("/apis/kubevirt.io/v1/namespaces/%s/virtualmachines", url.PathEscape(ns))

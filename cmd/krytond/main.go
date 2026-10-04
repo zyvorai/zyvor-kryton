@@ -37,6 +37,7 @@ import (
 	"github.com/zyvorai/kryton/internal/jobs"
 	"github.com/zyvorai/kryton/internal/kubeapi"
 	"github.com/zyvorai/kryton/internal/kubevirt"
+	"github.com/zyvorai/kryton/internal/libvirt"
 	"github.com/zyvorai/kryton/internal/metrics"
 	"github.com/zyvorai/kryton/internal/provider"
 	"github.com/zyvorai/kryton/internal/reconciler"
@@ -120,10 +121,17 @@ func main() {
 			os.Exit(2)
 		}
 		kubeClient = kc
-		p = kubevirt.New(kubevirt.Config{Client: kc, NamespacePrefix: cfg.NamespacePrefix, ImageNamespace: effectiveImageNS, StorageClass: effectiveSC})
+		p = kubevirt.New(kubevirt.Config{Catalog: cat, Client: kc, NamespacePrefix: cfg.NamespacePrefix, ImageNamespace: effectiveImageNS, StorageClass: effectiveSC})
 		if err := kubevirt.EnsureNamespaces(context.Background(), kc, cfg.NamespacePrefix, cfg.Projects); err != nil {
 			log.Warn("project namespace bootstrap failed", "error", err)
 		}
+	case "libvirt":
+		lp, err := libvirt.New(libvirt.Config{URI: cfg.LibvirtURI, DataDir: cfg.LibvirtDataDir, ImageDir: cfg.LinuxImageDir, Network: cfg.LibvirtNetwork, Catalog: cat})
+		if err != nil {
+			log.Error("libvirt provider failed", "error", err)
+			os.Exit(2)
+		}
+		p = lp
 	case "dockur":
 		dp, err := dockur.New(dockur.Config{
 			Runtime: cfg.Dockur.Runtime, DataDir: cfg.Dockur.DataDir, PublicHost: cfg.Dockur.PublicHost,
@@ -198,7 +206,7 @@ func main() {
 			DockurData: cfg.Dockur.DataDir, DockurRun: cfg.Dockur.Runtime,
 		},
 		Inventory: &images.Inventory{
-			Provider: p.Name(), ImageNS: effectiveImageNS, KubeClient: kubeClient,
+			LinuxImageDir: cfg.LinuxImageDir, Provider: p.Name(), ImageNS: effectiveImageNS, KubeClient: kubeClient,
 			Golden: goldenMgr, ProjectRoot: projectRoot,
 		},
 		Log: log,
