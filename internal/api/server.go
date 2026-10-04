@@ -114,6 +114,7 @@ type Server struct {
 	settingsConfigPath string
 	rateLimiter        *rateLimiter
 	corsOrigins        []string
+	consoleTickets     *consoleTickets
 }
 
 type createRequest struct {
@@ -154,7 +155,8 @@ func New(cfg Config) *Server {
 		allowInsecure: cfg.AllowInsecure, labAutoAuth: cfg.LabAutoAuth, labTokenFile: cfg.LabTokenFile,
 		defaultProjectEnv: cfg.DefaultProjectEnv, imageNamespaceEnv: cfg.ImageNamespaceEnv,
 		storageConfigPath: cfg.StorageConfigPath, settingsConfigPath: cfg.SettingsConfigPath, corsOrigins: cfg.CORSOrigins,
-		rateLimiter: newRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst),
+		rateLimiter:    newRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst),
+		consoleTickets: newConsoleTickets(),
 	}
 }
 
@@ -192,6 +194,7 @@ func (s *Server) Handler() http.Handler {
 	apiMux.HandleFunc("GET /api/v1/machines/{id}", s.getMachine)
 	apiMux.HandleFunc("GET /api/v1/machines/{id}/console", s.machineConsole)
 	apiMux.HandleFunc("/api/v1/machines/{id}/console/{path...}", s.machineConsole)
+	apiMux.HandleFunc("POST /api/v1/machines/{id}/console-ticket", s.machineConsoleTicket)
 	apiMux.HandleFunc("GET /api/v1/machines/{id}/vnc", s.machineVNC)
 	apiMux.HandleFunc("DELETE /api/v1/machines/{id}", s.deleteMachine)
 	apiMux.HandleFunc("POST /api/v1/machines/{id}/start", s.startMachine)
@@ -214,7 +217,8 @@ func (s *Server) Handler() http.Handler {
 	// Exact match only — a trailing-slash pattern would steal /api/v1/*.
 	root.HandleFunc("GET /api/v1", s.apiDiscovery)
 	root.HandleFunc("GET /api/v1/lab/bootstrap", s.labBootstrap)
-	root.Handle("/api/", s.auth.Middleware(s.rateLimit(apiMux)))
+	api := s.rateLimit(apiMux)
+	root.Handle("/api/", s.consoleTicketAuth(s.auth.Middleware(api), api))
 	root.Handle("/", s.staticHandler())
 	return s.requestID(s.accessLog(s.cors(s.security(s.recoverer(root)))))
 }

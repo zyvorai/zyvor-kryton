@@ -63,6 +63,7 @@ func (s *Server) goldenPassport(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusNotFound, "not_found", "no guestkit passport recorded for this build (guestkit may not have been installed on the build host)")
 		return
 	}
+	// #nosec G304 G703 -- passport path is recorded by the golden builder, not taken from the request
 	data, err := os.ReadFile(path)
 	if err != nil {
 		s.writeAPIError(w, r, http.StatusNotFound, "not_found", "passport file missing on disk: "+path)
@@ -70,6 +71,7 @@ func (s *Server) goldenPassport(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	// #nosec G705 -- served as application/json with nosniff; not rendered as HTML
 	_, _ = w.Write(data)
 }
 

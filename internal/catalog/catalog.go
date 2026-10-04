@@ -33,6 +33,7 @@ type fileFormat struct {
 func Load(path string) (*Catalog, error) {
 	items := append(defaults(), linuxDefaults()...)
 	if path != "" {
+		// #nosec G304 -- KRYTON_IMAGES_FILE is operator configuration
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read images file: %w", err)

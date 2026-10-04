@@ -20,10 +20,11 @@ func openFileStore(path string) (*fileStore, error) {
 	if path == "" {
 		return nil, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	// #nosec G304 -- KRYTON_EVENTS_FILE is operator configuration
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +42,7 @@ func (s *fileStore) append(e Event) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	f, err := os.OpenFile(s.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(s.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -56,6 +57,7 @@ func loadFileStore(path string, max int) ([]Event, error) {
 	if path == "" {
 		return nil, nil
 	}
+	// #nosec G304 -- KRYTON_EVENTS_FILE is operator configuration
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {

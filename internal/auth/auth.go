@@ -185,6 +185,13 @@ func (a *Authenticator) authenticate(r *http.Request) (Principal, error) {
 	}
 }
 
+// WithPrincipal returns a copy of ctx carrying p, for callers that
+// authenticate a request by other means than Middleware (such as a
+// scoped console ticket).
+func WithPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, contextKey{}, p)
+}
+
 // FromContext retrieves the Principal Middleware attached to ctx,
 // or the zero Principal (no role, no projects) if none was set.
 func FromContext(ctx context.Context) Principal {

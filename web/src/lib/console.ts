@@ -30,6 +30,21 @@ export function machineConsole(m: Machine | undefined, project: string): string 
   return withConsoleHTML(url);
 }
 
+const CONSOLE_PATH = /^\/api\/v1\/machines\/([^/?]+)\/(console|vnc)(\/|\?|$)/;
+
+/** The ticket-mint endpoint for an in-app console URL, or '' for external URLs. */
+export function consoleTicketEndpoint(url: string): string {
+  const m = CONSOLE_PATH.exec(url);
+  if (!m) return '';
+  const project = new URLSearchParams(url.split('?')[1] || '').get('project') || 'default';
+  return `/api/v1/machines/${m[1]}/console-ticket?project=${encodeURIComponent(project)}`;
+}
+
+export function withConsoleTicket(url: string, ticket: string): string {
+  if (!url || !ticket) return url;
+  return url + (url.includes('?') ? '&' : '?') + 'console_ticket=' + encodeURIComponent(ticket);
+}
+
 /** Step 1..6 of the golden image factory for a build's phase/state. */
 export function goldenStepIndex(build?: GoldenBuild | null): number {
   if (!build) return 0;

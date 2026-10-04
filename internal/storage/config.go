@@ -83,7 +83,7 @@ func NewStore(path string, initial string) (*Store, error) {
 	if s.path == "" {
 		return s, nil
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o750); err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(s.path)
@@ -129,7 +129,7 @@ func (s *Store) Save(cfg Config) error {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
