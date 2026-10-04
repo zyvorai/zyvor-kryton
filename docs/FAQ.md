@@ -59,7 +59,7 @@ integration.
 
 ## Hardware & platform
 
-**What do I need to run it?** Go 1.23+; for the `dockur` provider,
+**What do I need to run it?** Go 1.27.1+; for the `dockur` provider,
 Docker/Podman with KVM; for the `kubevirt` provider, a Kubernetes cluster
 with KubeVirt and CDI installed (see [`docs/DEPLOYMENT.md`](DEPLOYMENT.md)
 and [`docs/STORAGE.md`](STORAGE.md) for storage-class requirements).

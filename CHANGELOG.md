@@ -17,7 +17,7 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ### Fixed
 
-- Minimum Go version raised to 1.26.6 to address standard-library vulnerability scan findings.
+- Minimum Go version raised to 1.27.1 (latest stable) to address standard-library vulnerability scan findings.
 - Libvirt: NoCloud seed on virtio-scsi so Debian cloud kernels (no AHCI) find it; guest IPs exclude loopback/link-local; image listings no longer re-hash artifacts.
 - Pending CDI DataSources no longer appear ready to deploy; Linux images are rejected by the Windows golden installer.
 - Webhook unit tests use local servers; OpenAPI copies are synchronized and CI uses the module Go version/current compatible lint tool.

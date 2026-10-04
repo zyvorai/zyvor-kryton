@@ -7,7 +7,7 @@ hero:
     backends — demo, dockur, and KubeVirt stay behind the provider boundary.
   swatches:
     - {label: "REST + CloudEvents"}
-    - {label: "Go 1.23+"}
+    - {label: "Go 1.27.1+"}
     - {label: "Apache-2.0"}
   highlights:
     - {value: "3", label: "Interchangeable providers behind one machine API — demo, dockur, KubeVirt", footnote: "1"}

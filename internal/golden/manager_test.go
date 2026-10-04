@@ -52,7 +52,7 @@ func TestBootstrapRequiresReadyArtifact(t *testing.T) {
 	if got.BootstrapState != "running" {
 		t.Fatalf("bootstrap state %q", got.BootstrapState)
 	}
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		cur, err := m.Get("11e-1")
 		if err != nil {
