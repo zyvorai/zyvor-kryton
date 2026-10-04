@@ -5,6 +5,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -234,6 +235,9 @@ func TestResolveKubernetesEndpointAlreadySet(t *testing.T) {
 }
 
 func TestResolveKubernetesFromKubeconfig(t *testing.T) {
+	if _, err := exec.LookPath("kubectl"); err != nil {
+		t.Skip("kubeconfig parsing shells out to kubectl, which is not installed")
+	}
 	dir := t.TempDir()
 	kubeconfig := filepath.Join(dir, "kubeconfig")
 	const kubeconfigYAML = `
