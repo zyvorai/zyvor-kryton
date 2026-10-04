@@ -70,7 +70,7 @@ func New(cfg Config) (*Manager, error) {
 		}
 		base = filepath.Join(home, ".kryton", "golden")
 	}
-	if err := os.MkdirAll(base, 0o755); err != nil {
+	if err := os.MkdirAll(base, 0o750); err != nil {
 		return nil, err
 	}
 	host := strings.TrimSpace(cfg.PublicHost)
@@ -299,6 +299,7 @@ func (m *Manager) runBuild(id, version, imageID, workdir string, auto bool) {
 	if m.oemDir != "" {
 		args = append(args, "--oem", m.oemDir)
 	}
+	// #nosec G204 -- fixed golden build script with validated version and Kryton-managed paths
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
@@ -323,6 +324,7 @@ func (m *Manager) runBootstrap(id, imageID, artifact, workdir string) {
 		delete(m.bootstrapping, id)
 		m.mu.Unlock()
 	}()
+	// #nosec G204 -- operator-configured bootstrap script; artifact comes from a ready build record
 	cmd := exec.Command(m.bootstrapPath, "--image", artifact, "--id", imageID)
 	cmd.Env = append(os.Environ(), "KRYTON_IMAGE_NAMESPACE="+m.imageNamespace, "KRYTON_IMAGE_ID="+imageID, "KRYTON_WINDOWS_IMAGE="+artifact)
 	out, err := cmd.CombinedOutput()
@@ -350,6 +352,7 @@ func (m *Manager) runBootstrap(id, imageID, artifact, workdir string) {
 }
 
 func (m *Manager) readStatus(path string) (model.GoldenBuild, error) {
+	// #nosec G304 -- status.json beneath the Kryton-managed golden directory
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return model.GoldenBuild{}, err
@@ -362,7 +365,7 @@ func (m *Manager) readStatus(path string) (model.GoldenBuild, error) {
 }
 
 func (m *Manager) writeStatus(workdir string, build model.GoldenBuild) error {
-	if err := os.MkdirAll(workdir, 0o755); err != nil {
+	if err := os.MkdirAll(workdir, 0o750); err != nil {
 		return err
 	}
 	build.UpdatedAt = time.Now().UTC()
@@ -370,7 +373,7 @@ func (m *Manager) writeStatus(workdir string, build model.GoldenBuild) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(workdir, "status.json"), b, 0o644)
+	return os.WriteFile(filepath.Join(workdir, "status.json"), b, 0o600)
 }
 
 func sortBuilds(items []model.GoldenBuild) {

@@ -182,11 +182,11 @@ func checkKVM() model.DoctorFinding {
 }
 
 func checkDirWritable(dir string) model.DoctorFinding {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return model.DoctorFinding{Check: "data-dir", Status: "fail", Message: err.Error(), Hint: "Set KRYTON_DOCKUR_DATA_DIR to a writable path"}
 	}
 	probe := filepath.Join(dir, ".kryton-write-test")
-	if err := os.WriteFile(probe, []byte("ok"), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte("ok"), 0o600); err != nil {
 		return model.DoctorFinding{Check: "data-dir", Status: "fail", Message: err.Error()}
 	}
 	_ = os.Remove(probe)

@@ -4,7 +4,15 @@
 import { describe, expect, it } from 'vitest';
 import { ago, eventDescription, eventTitle, fmtMemory, healthPercent, stateTone } from './format';
 import { availability, availabilityLabel, defaultImageId, pickableImages, sortImages, storageFoot, supportsProvider } from './images';
-import { goldenStepIndex, jobConsoleEmbed, machineConsole, sshCommand, withConsoleHTML } from './console';
+import {
+  consoleTicketEndpoint,
+  goldenStepIndex,
+  jobConsoleEmbed,
+  machineConsole,
+  sshCommand,
+  withConsoleHTML,
+  withConsoleTicket,
+} from './console';
 import { applyImageMinimums, buildCreateBody, parseKeys, validateCreate, type CreateForm } from './create';
 import { matchesFilter } from './machines';
 import type { Image, Machine } from '../types';
@@ -109,6 +117,14 @@ describe('console', () => {
     expect(jobConsoleEmbed({ id: 'machine:m-1', kind: 'machine', name: 'n', state: 'running', consoleUrl: 'http://x' }, 'p')).toBe(
       '/api/v1/machines/m-1/console/?project=p&format=html',
     );
+  });
+  it('mints tickets only for in-app console urls', () => {
+    expect(consoleTicketEndpoint('/api/v1/machines/m-1/console/?project=p&format=html')).toBe('/api/v1/machines/m-1/console-ticket?project=p');
+    expect(consoleTicketEndpoint('/api/v1/machines/m-1/vnc')).toBe('/api/v1/machines/m-1/console-ticket?project=default');
+    expect(consoleTicketEndpoint('/api/v1/machines/m-1/snapshots')).toBe('');
+    expect(consoleTicketEndpoint('http://10.0.0.1:8006')).toBe('');
+    expect(withConsoleTicket('/c?project=p', 'a.b')).toBe('/c?project=p&console_ticket=a.b');
+    expect(withConsoleTicket('/c', '')).toBe('/c');
   });
   it('maps golden phases to steps', () => {
     expect(goldenStepIndex(null)).toBe(0);

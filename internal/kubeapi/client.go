@@ -94,7 +94,8 @@ func New(cfg Config) (*Client, error) {
 		}
 	}
 
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.InsecureSkipVerify} //nolint:gosec -- explicit operator setting
+	// #nosec G402 -- insecure-skip-tls-verify is an explicit kubeconfig setting
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: cfg.InsecureSkipVerify} //nolint:gosec // explicit operator setting
 	if cfg.ClientCertFile != "" && cfg.ClientKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.ClientCertFile, cfg.ClientKeyFile)
 		if err != nil {

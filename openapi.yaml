@@ -324,6 +324,21 @@ paths:
         - $ref: '#/components/parameters/Project'
       responses:
         '200': {description: Console HTML or redirect}
+  /api/v1/machines/{id}/console-ticket:
+    post:
+      tags: [machines]
+      summary: Mint a short-lived console ticket
+      description: >-
+        Returns a 10-minute ticket (and sets an equivalent HttpOnly cookie scoped to
+        /api/v1/machines/{id}/) that authorizes GET requests to this machine's
+        /console and /vnc endpoints with viewer rights, for iframes, new tabs and
+        websockets that cannot send an Authorization header. Pass it as
+        ?console_ticket=.
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: '{"ticket": string, "expiresAt": date-time}'}
   /api/v1/machines/{id}/vnc:
     get:
       tags: [machines]

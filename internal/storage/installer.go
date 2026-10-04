@@ -85,7 +85,7 @@ func NewSetupManager(cfg SetupConfig) (*SetupManager, error) {
 		}
 		base = filepath.Join(home, ".kryton", "storage-setup")
 	}
-	if err := os.MkdirAll(base, 0o755); err != nil {
+	if err := os.MkdirAll(base, 0o750); err != nil {
 		return nil, err
 	}
 	return &SetupManager{
@@ -220,7 +220,7 @@ func (m *SetupManager) Start(req SetupRequest) (*SetupState, error) {
 		m.mu.Unlock()
 		return nil, err
 	}
-	_ = os.WriteFile(m.LogPath(), []byte(""), 0o644)
+	_ = os.WriteFile(m.LogPath(), []byte(""), 0o600)
 
 	go m.run(req, st)
 	return &st, nil
@@ -243,7 +243,7 @@ func (m *SetupManager) run(req SetupRequest, st SetupState) {
 		return
 	}
 
-	logf, err := os.OpenFile(m.LogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logf, err := os.OpenFile(m.LogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		st.State = "failed"
 		st.Error = err.Error()
@@ -254,6 +254,7 @@ func (m *SetupManager) run(req SetupRequest, st SetupState) {
 	defer func() { _ = logf.Close() }()
 
 	_, _ = fmt.Fprintf(logf, "[INFO] %s %v\n", script, args)
+	// #nosec G204 -- script is resolved from the fixed storage installer allowlist
 	cmd := exec.Command(script, args...)
 	cmd.Env = os.Environ()
 	cmd.Stdout = logf
@@ -289,7 +290,7 @@ func (m *SetupManager) writeStatus(st SetupState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(m.StatusPath(), append(b, '\n'), 0o644)
+	return os.WriteFile(m.StatusPath(), append(b, '\n'), 0o600)
 }
 
 func validateSetupRequest(req SetupRequest) error {

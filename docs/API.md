@@ -42,6 +42,7 @@ GET    /api/v1/machines?project=<project>&limit=<n>&cursor=<opaque>
 POST   /api/v1/machines
 GET    /api/v1/machines/{id}?project=<project>
 GET    /api/v1/machines/{id}/console?project=<project>
+POST   /api/v1/machines/{id}/console-ticket?project=<project>
 GET    /api/v1/machines/{id}/vnc?project=<project>
 POST   /api/v1/machines/{id}/start?project=<project>
 POST   /api/v1/machines/{id}/stop?project=<project>
@@ -124,6 +125,8 @@ CLI equivalent: `KRYTON_URL=… KRYTON_TOKEN=… krytonctl …`.
 ---
 
 ## Capabilities
+
+Browser consoles (iframes, new tabs, websockets) can't send an `Authorization` header. `POST /api/v1/machines/{id}/console-ticket` (viewer role) returns a 10-minute signed ticket; append it as `?console_ticket=` to that machine's `/console` or `/vnc` URL. Krytond also sets it as an HttpOnly, `SameSite=Strict` cookie scoped to `/api/v1/machines/{id}/` so console sub-resources and reconnects keep working. A ticket only grants `GET` on that one machine's console paths, and every ticket is invalidated when krytond restarts.
 
 `GET /api/v1/capabilities` reports what the active provider supports (start/stop, snapshots, console, etc.). Use this to build provider-aware UIs without hard-coding behavior.
 

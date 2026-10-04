@@ -6,6 +6,7 @@ import { api, q } from '../api';
 import { useApp } from '../state';
 import { ago, fmtDateTime, fmtMemory } from '../lib/format';
 import { machineConsole, sshCommand } from '../lib/console';
+import { useTicketedConsole } from '../lib/useTicketedConsole';
 import { DefList, Progress, StatePill } from '../components/kit';
 import Overlay from '../components/Overlay';
 import JobConsole from '../components/JobConsole';
@@ -49,6 +50,7 @@ export default function MachineDetail() {
   const linux = img?.os === 'linux';
   const job = m ? app.jobs.find((j) => j.kind === 'machine' && j.id === `machine:${m.id}`) : undefined;
   const consoleUrl = machineConsole(m || undefined, app.project);
+  const consoleLinks = useTicketedConsole(m?.state === 'running' ? consoleUrl : '');
 
   const act = async (label: string, fn: () => Promise<unknown>, done: string) => {
     setBusy(label);
@@ -162,8 +164,8 @@ export default function MachineDetail() {
               Copy RDP
             </button>
           )}
-          {consoleUrl && (
-            <a className="buttonlike btn-secondary" href={consoleUrl} target="_blank" rel="noopener noreferrer">
+          {consoleLinks.open && (
+            <a className="buttonlike btn-secondary" href={consoleLinks.open} target="_blank" rel="noopener noreferrer">
               <Icon name="terminal" size={14} />
               Console
             </a>
@@ -208,15 +210,15 @@ export default function MachineDetail() {
           </div>
         )}
 
-        {consoleUrl && m.state === 'running' && (
+        {consoleLinks.embed && m.state === 'running' && (
           <div className="console-frame">
             <div className="console-frame-head">
               <span>Console</span>
-              <a href={consoleUrl} target="_blank" rel="noopener noreferrer">
+              <a href={consoleLinks.open || consoleLinks.embed} target="_blank" rel="noopener noreferrer">
                 Full screen
               </a>
             </div>
-            <iframe src={consoleUrl} title="Machine console" allow="clipboard-read; clipboard-write" referrerPolicy="no-referrer" />
+            <iframe src={consoleLinks.embed} title="Machine console" allow="clipboard-read; clipboard-write" referrerPolicy="no-referrer" />
           </div>
         )}
         {consoleUrl && ['provisioning', 'starting'].includes(m.state) && (

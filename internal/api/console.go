@@ -6,6 +6,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -59,7 +60,8 @@ func (s *Server) writeConsoleHTML(w http.ResponseWriter, machineID, project, con
 		"bootError": connectErr,
 	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, consoleHTML, string(cfg), machineID)
+	// #nosec G705 -- cfg is json.Marshal output (HTML-escaped) and the ID is escaped
+	_, _ = fmt.Fprintf(w, consoleHTML, string(cfg), html.EscapeString(machineID))
 }
 
 func (s *Server) machineVNC(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +106,13 @@ func (s *Server) proxyWebConsole(w http.ResponseWriter, r *http.Request, upstrea
 		req.URL.Path = suffix
 		req.URL.RawPath = ""
 		req.Host = target.Host
+		q := req.URL.Query()
+		q.Del(consoleTicketParam)
+		q.Del("project")
+		q.Del("format")
+		req.URL.RawQuery = q.Encode()
+		req.Header.Del("Authorization")
+		req.Header.Del("Cookie")
 	}
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
 		if s.log != nil {

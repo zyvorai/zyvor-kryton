@@ -7,6 +7,8 @@ import { jobConsoleEmbed, jobConsoleOpen } from '../lib/console';
 import { Card, ListEmpty, PageHero, StatePill } from '../components/kit';
 import JobConsole from '../components/JobConsole';
 import Icon from '../components/Icon';
+import { useTicketedConsole } from '../lib/useTicketedConsole';
+import type { Job } from '../types';
 
 export default function Jobs() {
   const app = useApp();
@@ -44,32 +46,36 @@ export default function Jobs() {
         </ListEmpty>
       )}
       <div className="stack">
-        {[...running, ...rest].map((job) => {
-          const embed = jobConsoleEmbed(job, app.project);
-          return (
-            <Card
-              key={job.id}
-              eyebrow={`${job.kind} job`}
-              title={job.name}
-              lede={job.message}
-              actions={<StatePill state={job.state === 'running' ? 'provisioning' : job.state} />}
-            >
-              <JobConsole job={job} project={app.project} />
-              {embed && job.state === 'running' && (
-                <div className="console-frame">
-                  <div className="console-frame-head">
-                    <span>Live install viewer</span>
-                    <a href={jobConsoleOpen(job, app.project)} target="_blank" rel="noopener noreferrer">
-                      Full screen
-                    </a>
-                  </div>
-                  <iframe src={embed} title="Install console" />
-                </div>
-              )}
-            </Card>
-          );
-        })}
+        {[...running, ...rest].map((job) => (
+          <Card
+            key={job.id}
+            eyebrow={`${job.kind} job`}
+            title={job.name}
+            lede={job.message}
+            actions={<StatePill state={job.state === 'running' ? 'provisioning' : job.state} />}
+          >
+            <JobConsole job={job} project={app.project} />
+            {job.state === 'running' && <JobViewer job={job} project={app.project} />}
+          </Card>
+        ))}
       </div>
+    </div>
+  );
+}
+
+function JobViewer({ job, project }: { job: Job; project: string }) {
+  const embed = useTicketedConsole(jobConsoleEmbed(job, project)).embed;
+  const open = useTicketedConsole(jobConsoleOpen(job, project)).open;
+  if (!embed) return null;
+  return (
+    <div className="console-frame">
+      <div className="console-frame-head">
+        <span>Live install viewer</span>
+        <a href={open || embed} target="_blank" rel="noopener noreferrer">
+          Full screen
+        </a>
+      </div>
+      <iframe src={embed} title="Install console" />
     </div>
   );
 }

@@ -240,6 +240,7 @@ func (c client) do(method, path string, body any) {
 		b, _ := json.Marshal(body)
 		r = bytes.NewReader(b)
 	}
+	// #nosec G704 -- the CLI talks to the Kryton URL its operator configured
 	req, err := http.NewRequest(method, c.base+path, r)
 	if err != nil {
 		fatal(err)
@@ -248,6 +249,7 @@ func (c client) do(method, path string, body any) {
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
+	// #nosec G704 -- request built above for the operator-configured Kryton URL
 	res, err := c.http.Do(req)
 	if err != nil {
 		fatal(err)

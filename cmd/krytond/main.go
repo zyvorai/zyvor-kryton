@@ -260,6 +260,7 @@ func main() {
 
 func findProjectRoot() string {
 	if v := os.Getenv("KRYTON_PROJECT_ROOT"); v != "" {
+		// #nosec G703 -- KRYTON_PROJECT_ROOT is operator configuration
 		if _, err := os.Stat(filepath.Join(v, "scripts", "enable-kubevirt-snapshots.sh")); err == nil {
 			return filepath.Clean(v)
 		}

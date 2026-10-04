@@ -8,7 +8,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/zyvorai/kryton/internal/auth"
 )
 
 // The demo provider does not implement provider.ConsoleResolver, so
@@ -93,5 +98,126 @@ func TestMachineConsoleRequiresViewerRole(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without credentials, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func createMachineAs(t *testing.T, h http.Handler, token, name string) string {
+	t.Helper()
+	b, _ := json.Marshal(map[string]any{"project": "default", "name": name, "image": "windows-server-2025", "compute": map[string]any{"cpu": 4, "memoryMiB": 8192}, "disk": map[string]any{"sizeGiB": 80}})
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/machines", bytes.NewReader(b))
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	var m struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil || m.ID == "" {
+		t.Fatalf("create machine: %d %s", w.Code, w.Body.String())
+	}
+	return m.ID
+}
+
+func mintConsoleTicket(t *testing.T, h http.Handler, token, id string) string {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/machines/"+id+"/console-ticket?project=default", nil)
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	var out struct {
+		Ticket string `json:"ticket"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &out) != nil || out.Ticket == "" {
+		t.Fatalf("mint ticket: %d %s", w.Code, w.Body.String())
+	}
+	return out.Ticket
+}
+
+// Ticketed requests that pass auth reach the demo provider's 501
+// "unsupported console" branch; rejected ones stop at 401.
+func TestConsoleTicketUnlocksOnlyThatMachinesConsole(t *testing.T) {
+	h, viewer, admin := testServerAPIKeyRoles(t)
+	id := createMachineAs(t, h, admin, "win-t1")
+	other := createMachineAs(t, h, admin, "win-t2")
+	ticket := mintConsoleTicket(t, h, viewer, id)
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/machines/"+id+"/console/?project=default&format=html&console_ticket="+url.QueryEscape(ticket), nil))
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("query ticket: expected 501, got %d: %s", w.Code, w.Body.String())
+	}
+	var cookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == consoleTicketCookie {
+			cookie = c
+		}
+	}
+	if cookie == nil || !cookie.HttpOnly || cookie.Path != "/api/v1/machines/"+id+"/" || cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("expected scoped HttpOnly console cookie, got %+v", cookie)
+	}
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/machines/"+id+"/vnc?project=default", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("cookie ticket on vnc: expected 501, got %d: %s", w.Code, w.Body.String())
+	}
+
+	for name, req := range map[string]*http.Request{
+		"other machine":   httptest.NewRequest(http.MethodGet, "/api/v1/machines/"+other+"/console?project=default&console_ticket="+url.QueryEscape(ticket), nil),
+		"non-console":     httptest.NewRequest(http.MethodGet, "/api/v1/machines/"+id+"?project=default&console_ticket="+url.QueryEscape(ticket), nil),
+		"mutating method": httptest.NewRequest(http.MethodPost, "/api/v1/machines/"+id+"/console?project=default&console_ticket="+url.QueryEscape(ticket), nil),
+		"tampered":        httptest.NewRequest(http.MethodGet, "/api/v1/machines/"+id+"/console?project=default&console_ticket="+url.QueryEscape(ticket+"x"), nil),
+	} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("%s: expected 401, got %d: %s", name, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestConsoleTicketRequiresAuthAndExistingMachine(t *testing.T) {
+	h, viewer, _ := testServerAPIKeyRoles(t)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/machines/x/console-ticket?project=default", nil))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without credentials, got %d", w.Code)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/machines/missing/console-ticket?project=default", nil)
+	r.Header.Set("Authorization", "Bearer "+viewer)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown machine, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestConsoleTicketExpiresAndScopesPrincipal(t *testing.T) {
+	ct := newConsoleTickets()
+	now := time.Unix(1_800_000_000, 0)
+	ct.now = func() time.Time { return now }
+	ticket, _ := ct.issue(auth.Principal{Name: "alice|x"}, "default", "m1")
+	p, err := ct.verify(ticket, "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Role != auth.Viewer || len(p.Projects) != 1 || p.Projects[0] != "default" || p.Name != "alice|x (console)" {
+		t.Fatalf("unexpected principal %+v", p)
+	}
+	now = now.Add(consoleTicketTTL)
+	if _, err := ct.verify(ticket, "m1"); err == nil {
+		t.Fatal("expected expired ticket to be rejected")
+	}
+	if _, err := newConsoleTickets().verify(ticket, "m1"); err == nil {
+		t.Fatal("expected ticket from another signing key to be rejected")
+	}
+}
+
+func TestWriteConsoleHTMLEscapesMachineID(t *testing.T) {
+	w := httptest.NewRecorder()
+	(&Server{}).writeConsoleHTML(w, `<img src=x onerror=alert(1)>`, "default", "boom")
+	if strings.Contains(w.Body.String(), "<img") {
+		t.Fatalf("machine ID was not escaped: %s", w.Body.String())
 	}
 }

@@ -96,7 +96,7 @@ func New(cfg Config) (*Provider, error) {
 		home, _ := os.UserHomeDir()
 		dataDir = filepath.Join(home, ".kryton", "dockur")
 	}
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return nil, err
 	}
 	httpBase := cfg.HTTPBase
@@ -160,6 +160,7 @@ func (p *Provider) Health(ctx context.Context) error {
 	if _, err := exec.LookPath(p.runtime); err != nil {
 		return fmt.Errorf("%s not found: %w", p.runtime, err)
 	}
+	// #nosec G204 -- runtime is the configured docker/podman binary; fixed arguments
 	cmd := exec.CommandContext(ctx, p.runtime, "compose", "version")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s compose unavailable: %v (%s)", p.runtime, err, strings.TrimSpace(string(out)))
@@ -189,7 +190,7 @@ func (p *Provider) Create(ctx context.Context, project string, spec model.Machin
 	machineID := id.New()
 	ports := p.allocatePortsLocked()
 	dir := p.machineDir(project, machineID)
-	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "storage"), 0o750); err != nil {
 		return nil, err
 	}
 	spec = applyDockurDefaults(spec)
@@ -197,7 +198,7 @@ func (p *Provider) Create(ctx context.Context, project string, spec model.Machin
 		return nil, err
 	}
 	compose := renderCompose(spec, version, ports)
-	if err := os.WriteFile(filepath.Join(dir, "compose.yml"), []byte(compose), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "compose.yml"), []byte(compose), 0o600); err != nil {
 		return nil, err
 	}
 	if err := p.compose(ctx, dir, "up", "-d", "--pull", "missing"); err != nil {
@@ -360,6 +361,7 @@ func (p *Provider) machineDir(project, machineID string) string {
 
 func (p *Provider) compose(ctx context.Context, dir string, args ...string) error {
 	full := append([]string{"compose", "-f", filepath.Join(dir, "compose.yml"), "--project-directory", dir}, args...)
+	// #nosec G204 -- configured container runtime; compose file and dir are Kryton-managed
 	cmd := exec.CommandContext(ctx, p.runtime, full...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -449,7 +451,7 @@ func prepareDockurDirs(machineDir string, d *model.DockurOptions) error {
 	}
 	for i := range d.ExtraDisksGiB {
 		path := filepath.Join(machineDir, fmt.Sprintf("storage%d", i+2))
-		if err := os.MkdirAll(path, 0o755); err != nil {
+		if err := os.MkdirAll(path, 0o750); err != nil {
 			return err
 		}
 	}

@@ -575,7 +575,7 @@ sync_binaries_only() {
 ensure_go_remote() {
     step_begin "Ensure Go toolchain"
     if [ "$DRY_RUN" = true ]; then
-        dry "would ensure go 1.23+"
+        dry "would ensure go 1.27+"
         step_end
         return 0
     fi
@@ -600,7 +600,7 @@ case "$ARCH" in
   aarch64|arm64) GOARCH=arm64 ;;
   *) echo "unsupported arch: $ARCH"; exit 1 ;;
 esac
-GO_VER="${KRYTON_GO_VERSION:-1.23.8}"
+GO_VER="${KRYTON_GO_VERSION:-1.27.1}"
 TMP=$(mktemp -d)
 curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-${GOARCH}.tar.gz" -o "${TMP}/go.tgz"
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"

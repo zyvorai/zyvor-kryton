@@ -153,6 +153,7 @@ func readFileB64(path string) string {
 	if strings.TrimSpace(path) == "" {
 		return ""
 	}
+	// #nosec G304 -- kubeconfig-referenced file chosen by the operator
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""

@@ -293,6 +293,7 @@ func (s *Service) tailDockurLogs(m model.Machine) []model.JobLogLine {
 		s.DockurRun = "docker"
 	}
 	name := m.ID + "-windows-1"
+	// #nosec G204 -- configured container runtime; name is derived from a machine UUID
 	cmd := exec.Command(s.DockurRun, "logs", "--tail", "40", name)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -330,6 +331,7 @@ func readGoldenLogs(s *Service, buildID string) []model.JobLogLine {
 	paths = append(paths, filepath.Join(home, ".kryton", "golden", buildID, "job.log"))
 	var lines []model.JobLogLine
 	for _, path := range paths {
+		// #nosec G304 -- log paths beneath Kryton-managed job directories
 		b, err := os.ReadFile(path)
 		if err != nil {
 			continue
