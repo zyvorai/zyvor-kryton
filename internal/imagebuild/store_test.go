@@ -35,6 +35,9 @@ func TestPinnedAcquisitionAndTamperDetection(t *testing.T) {
 	if _, err = store.Get(img.ID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = store.Lookup(img.ID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = store.Fetch(context.Background(), img, server.URL, digest); err != nil {
 		t.Fatal("cache collision failed", err)
 	}
@@ -53,6 +56,18 @@ func TestPinnedAcquisitionAndTamperDetection(t *testing.T) {
 	}
 	if _, err = store.Get(img.ID); err == nil {
 		t.Fatal("accepted corrupt cached image")
+	}
+	if _, err = store.Lookup(img.ID); err == nil {
+		t.Fatal("listed truncated cached image")
+	}
+	if err = os.WriteFile(a.Path, []byte("tamper-xyz"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Lookup(img.ID); err != nil {
+		t.Fatal("same-size lookup should stay cheap", err)
+	}
+	if _, err = store.Get(img.ID); err == nil {
+		t.Fatal("provisioning path accepted same-size tamper")
 	}
 }
 func TestFetchFailureDoesNotPublishManifest(t *testing.T) {

@@ -73,7 +73,7 @@ export default function Machines() {
             <thead>
               <tr>
                 <th>Machine</th>
-                <th>Image</th>
+                <th className="hide-sm">Image</th>
                 <th className="hide-sm">Resources</th>
                 <th>State</th>
                 <th className="hide-sm">IP address</th>
@@ -98,7 +98,7 @@ export default function Machines() {
                       <span>{m.id}</span>
                     </div>
                   </td>
-                  <td className="cell-muted">{m.spec.image}</td>
+                  <td className="cell-muted hide-sm">{m.spec.image}</td>
                   <td className="cell-muted hide-sm">
                     {m.spec.compute.cpu} vCPU · {fmtMemory(m.spec.compute.memoryMiB)} · {m.spec.disk.sizeGiB} GiB
                   </td>

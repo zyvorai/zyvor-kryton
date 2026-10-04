@@ -61,7 +61,7 @@ func (inv *Inventory) apply(img model.Image, stored map[string]string, goldenRea
 		return img
 	}
 	if inv.Provider == "libvirt" {
-		if art, err := (imagebuild.Store{Dir: inv.LinuxImageDir}).Get(img.ID); err == nil {
+		if art, err := (imagebuild.Store{Dir: inv.LinuxImageDir}).Lookup(img.ID); err == nil {
 			img.Ready = true
 			img.Availability = "stored"
 			img.StorageSource = "verified"

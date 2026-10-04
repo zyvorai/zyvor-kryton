@@ -153,7 +153,37 @@ func (s Store) Fetch(ctx context.Context, img model.Image, source, digest string
 	}
 	return art, nil
 }
+
+// Get returns the artifact after re-hashing it against its manifest digest.
 func (s Store) Get(imageID string) (Artifact, error) {
+	a, err := s.manifest(imageID)
+	if err != nil {
+		return a, err
+	}
+	if err = verify(a.Path, a.SHA256); err != nil {
+		return a, err
+	}
+	return a, nil
+}
+
+// Lookup validates the manifest and the artifact's type and size without
+// hashing, for listings polled by the UI. Provisioning must use Get.
+func (s Store) Lookup(imageID string) (Artifact, error) {
+	a, err := s.manifest(imageID)
+	if err != nil {
+		return a, err
+	}
+	info, err := os.Lstat(a.Path)
+	if err != nil {
+		return a, err
+	}
+	if !info.Mode().IsRegular() || info.Size() != a.Bytes {
+		return a, fmt.Errorf("artifact does not match manifest")
+	}
+	return a, nil
+}
+
+func (s Store) manifest(imageID string) (Artifact, error) {
 	if !imageRE.MatchString(imageID) {
 		return Artifact{}, fmt.Errorf("invalid image id")
 	}
@@ -171,9 +201,6 @@ func (s Store) Get(imageID string) (Artifact, error) {
 	}
 	if a.ImageID != imageID || !digestRE.MatchString(a.SHA256) || a.Path != filepath.Join(dir, a.SHA256+".qcow2") {
 		return a, fmt.Errorf("invalid artifact manifest")
-	}
-	if err = verify(a.Path, a.SHA256); err != nil {
-		return a, err
 	}
 	return a, nil
 }
