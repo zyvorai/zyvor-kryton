@@ -12,17 +12,6 @@ import (
 //go:embed openapi.yaml
 var openAPISpec []byte
 
-type apiCatalog struct {
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Description string            `json:"description"`
-	OpenAPI     string            `json:"openapi"`
-	BasePath    string            `json:"basePath"`
-	Auth        apiCatalogAuth    `json:"auth"`
-	Health      map[string]string `json:"health"`
-	Endpoints   []apiEndpoint     `json:"endpoints"`
-}
-
 type apiCatalogAuth struct {
 	Mode    string   `json:"mode"`
 	Schemes []string `json:"schemes"`

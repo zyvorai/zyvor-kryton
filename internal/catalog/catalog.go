@@ -31,7 +31,7 @@ type fileFormat struct {
 // KRYTON_IMAGES_FILE JSON document (unique, non-empty IDs/names),
 // replacing the defaults entirely rather than merging with them.
 func Load(path string) (*Catalog, error) {
-	items := defaults()
+	items := append(defaults(), linuxDefaults()...)
 	if path != "" {
 		b, err := os.ReadFile(path)
 		if err != nil {
@@ -53,6 +53,33 @@ func Load(path string) (*Catalog, error) {
 		}
 		if _, exists := c.items[img.ID]; exists {
 			return nil, fmt.Errorf("duplicate image id %q", img.ID)
+		}
+		if img.OS == "" {
+			img.OS = "windows"
+		}
+		if img.Architecture == "" {
+			img.Architecture = "amd64"
+		}
+		if img.Firmware == "" {
+			img.Firmware = "efi"
+		}
+		if len(img.Providers) == 0 {
+			img.Providers = []string{"kubevirt"}
+			if img.OS == "linux" {
+				img.Providers = append(img.Providers, "libvirt")
+			}
+			if img.DockurVersion != "" {
+				img.Providers = append(img.Providers, "dockur")
+			}
+		}
+		if img.OS != "linux" && img.OS != "windows" {
+			return nil, fmt.Errorf("invalid OS for %q", img.ID)
+		}
+		if img.Architecture != "amd64" {
+			return nil, fmt.Errorf("unsupported architecture for %q: first release supports amd64", img.ID)
+		}
+		if img.Firmware != "efi" && img.Firmware != "bios" {
+			return nil, fmt.Errorf("invalid firmware for %q", img.ID)
 		}
 		c.items[img.ID] = img
 	}

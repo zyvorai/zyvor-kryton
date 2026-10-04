@@ -6,6 +6,22 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+### Added
+
+- Six amd64 Linux cloud-image templates, typed SSH/cloud-init initialization, Linux-specific KubeVirt hardware profiles, and provider-aware UI/CLI creation.
+- Native local libvirt lifecycle backend with persistent UUID records, isolated converted disks, NoCloud seeds, restart recovery, and explicit unsupported snapshot/console capabilities.
+- `kryton-image` for checksum-pinned acquisition, immutable artifacts, provenance records and CDI/libvirt/cloud-init exports; generated examples and a real guest boot acceptance script.
+- Tests for all Linux and Windows template profiles, real disk/seed provisioning, libvirt XML validation, and Linux template CI.
+- Operator console rebuilt in React + Vite (`web/`) with the netra apple.com design system: light/dark themes, glass nav, metric band, sheet-based create flow, machine drawer with SSH hints; CI typechecks, tests and checks the embedded bundle is current.
+- `deploy-remote.sh --provider` (libvirt preflight and storage setup) and `kryton-image` installation; `KRYTON_E2E_IMAGES` for the boot gate.
+
+### Fixed
+
+- Minimum Go version raised to 1.26.6 to address standard-library vulnerability scan findings.
+- Libvirt: NoCloud seed on virtio-scsi so Debian cloud kernels (no AHCI) find it; guest IPs exclude loopback/link-local; image listings no longer re-hash artifacts.
+- Pending CDI DataSources no longer appear ready to deploy; Linux images are rejected by the Windows golden installer.
+- Webhook unit tests use local servers; OpenAPI copies are synchronized and CI uses the module Go version/current compatible lint tool.
+
 ## [1.2.0] - 2026-09-02
 
 ### Added

@@ -15,17 +15,19 @@ import (
 
 	"github.com/zyvorai/kryton/internal/catalog"
 	"github.com/zyvorai/kryton/internal/golden"
+	"github.com/zyvorai/kryton/internal/imagebuild"
 	"github.com/zyvorai/kryton/internal/kubeapi"
 	"github.com/zyvorai/kryton/internal/model"
 )
 
 // Inventory enriches catalog entries with what is actually stored / deployable.
 type Inventory struct {
-	Provider    string
-	ImageNS     string
-	KubeClient  *kubeapi.Client
-	Golden      *golden.Manager
-	ProjectRoot string
+	LinuxImageDir string
+	Provider      string
+	ImageNS       string
+	KubeClient    *kubeapi.Client
+	Golden        *golden.Manager
+	ProjectRoot   string
 }
 
 // Enrich returns every catalog image with Ready/Availability/StorageSource
@@ -55,6 +57,18 @@ func (inv *Inventory) apply(img model.Image, stored map[string]string, goldenRea
 	img.ValidationScore = 0
 	img.PassportBuildID = ""
 
+	if !img.SupportsProvider(inv.Provider) {
+		return img
+	}
+	if inv.Provider == "libvirt" {
+		if art, err := (imagebuild.Store{Dir: inv.LinuxImageDir}).Lookup(img.ID); err == nil {
+			img.Ready = true
+			img.Availability = "stored"
+			img.StorageSource = "verified"
+			img.StoragePath = art.Path
+		}
+		return img
+	}
 	if art, ok := goldenReady[img.ID]; ok {
 		img.Ready = true
 		img.Availability = "stored"
@@ -108,8 +122,13 @@ func (inv *Inventory) dataSources(ctx context.Context) map[string]string {
 		m, _ := raw.(map[string]any)
 		meta, _ := m["metadata"].(map[string]any)
 		name, _ := meta["name"].(string)
-		if name != "" {
-			out[name] = ns
+		status, _ := m["status"].(map[string]any)
+		conditions, _ := status["conditions"].([]any)
+		for _, rawCondition := range conditions {
+			condition, _ := rawCondition.(map[string]any)
+			if name != "" && condition["type"] == "Ready" && condition["status"] == "True" {
+				out[name] = ns
+			}
 		}
 	}
 	return out

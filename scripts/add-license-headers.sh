@@ -98,10 +98,12 @@ for f in scripts/*.sh; do
 done
 
 echo "→ Web assets"
-for f in cmd/krytond/web/app.js cmd/krytond/web/console-viewer.js; do
-  [ -f "$f" ] && prepend_text "$f" "${JS_HEADER}"
-done
-[ -f cmd/krytond/web/style.css ] && prepend_text cmd/krytond/web/style.css "${CSS_HEADER}"
+while IFS= read -r f; do
+  prepend_text "$f" "${JS_HEADER}"
+done < <(find web/src -name '*.ts' -o -name '*.tsx' | sort; echo web/vite.config.ts; echo web/public/console-viewer.js; echo web/public/theme-init.js)
+while IFS= read -r f; do
+  prepend_text "$f" "${CSS_HEADER}"
+done < <(find web/src -name '*.css' | sort)
 
 echo "→ OpenAPI YAML"
 for f in openapi.yaml cmd/krytond/openapi.yaml internal/api/openapi.yaml; do

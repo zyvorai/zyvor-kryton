@@ -1,0 +1,148 @@
+{
+  "images": [
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "firmware": "bios",
+      "defaultUser": "almalinux",
+      "sourceUrl": "https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2",
+      "providers": [
+        "libvirt",
+        "kubevirt"
+      ],
+      "id": "almalinux-9",
+      "name": "AlmaLinux 9",
+      "version": "9",
+      "family": "almalinux",
+      "description": "Cloud-init enabled Linux image for libvirt and KubeVirt; acquire and validate before production.",
+      "minCpu": 1,
+      "minMemoryMiB": 1024,
+      "defaultDiskGiB": 20,
+      "tags": [
+        "linux",
+        "cloud-init"
+      ],
+      "ready": false
+    },
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "firmware": "bios",
+      "defaultUser": "debian",
+      "sourceUrl": "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2",
+      "providers": [
+        "libvirt",
+        "kubevirt"
+      ],
+      "id": "debian-12",
+      "name": "Debian 12",
+      "version": "12",
+      "family": "debian",
+      "description": "Cloud-init enabled Linux image for libvirt and KubeVirt; acquire and validate before production.",
+      "minCpu": 1,
+      "minMemoryMiB": 1024,
+      "defaultDiskGiB": 20,
+      "tags": [
+        "linux",
+        "cloud-init"
+      ],
+      "ready": false
+    },
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "firmware": "bios",
+      "defaultUser": "debian",
+      "sourceUrl": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2",
+      "providers": [
+        "libvirt",
+        "kubevirt"
+      ],
+      "id": "debian-13",
+      "name": "Debian 13",
+      "version": "13",
+      "family": "debian",
+      "description": "Cloud-init enabled Linux image for libvirt and KubeVirt; acquire and validate before production.",
+      "minCpu": 1,
+      "minMemoryMiB": 1024,
+      "defaultDiskGiB": 20,
+      "tags": [
+        "linux",
+        "cloud-init"
+      ],
+      "ready": false
+    },
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "firmware": "bios",
+      "defaultUser": "rocky",
+      "sourceUrl": "https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2",
+      "providers": [
+        "libvirt",
+        "kubevirt"
+      ],
+      "id": "rocky-9",
+      "name": "Rocky Linux 9",
+      "version": "9",
+      "family": "rocky",
+      "description": "Cloud-init enabled Linux image for libvirt and KubeVirt; acquire and validate before production.",
+      "minCpu": 1,
+      "minMemoryMiB": 1024,
+      "defaultDiskGiB": 20,
+      "tags": [
+        "linux",
+        "cloud-init"
+      ],
+      "ready": false
+    },
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "firmware": "bios",
+      "defaultUser": "ubuntu",
+      "sourceUrl": "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img",
+      "providers": [
+        "libvirt",
+        "kubevirt"
+      ],
+      "id": "ubuntu-22.04",
+      "name": "Ubuntu 22.04 LTS",
+      "version": "22.04",
+      "family": "ubuntu",
+      "description": "Cloud-init enabled Linux image for libvirt and KubeVirt; acquire and validate before production.",
+      "minCpu": 1,
+      "minMemoryMiB": 1024,
+      "defaultDiskGiB": 20,
+      "tags": [
+        "linux",
+        "cloud-init"
+      ],
+      "ready": false
+    },
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "firmware": "bios",
+      "defaultUser": "ubuntu",
+      "sourceUrl": "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img",
+      "providers": [
+        "libvirt",
+        "kubevirt"
+      ],
+      "id": "ubuntu-24.04",
+      "name": "Ubuntu 24.04 LTS",
+      "version": "24.04",
+      "family": "ubuntu",
+      "description": "Cloud-init enabled Linux image for libvirt and KubeVirt; acquire and validate before production.",
+      "minCpu": 1,
+      "minMemoryMiB": 1024,
+      "defaultDiskGiB": 20,
+      "tags": [
+        "linux",
+        "cloud-init"
+      ],
+      "ready": false
+    }
+  ]
+}

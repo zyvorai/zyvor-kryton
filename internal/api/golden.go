@@ -85,6 +85,10 @@ func (s *Server) goldenStart(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(w, r, &req); err != nil {
 		return
 	}
+	if img, ok := s.catalog.Get(req.ImageID); ok && img.OS == "linux" {
+		s.badRequest(w, r, "use kryton-image fetch for Linux cloud images; golden installer is Windows-only")
+		return
+	}
 	if !req.Auto {
 		req.Auto = true
 	}

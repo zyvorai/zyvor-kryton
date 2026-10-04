@@ -5,6 +5,9 @@ package images
 
 import (
 	"context"
+	"github.com/zyvorai/kryton/internal/kubeapi"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/zyvorai/kryton/internal/catalog"
@@ -144,5 +147,22 @@ func TestEnrichNilCatalogReturnsNil(t *testing.T) {
 	inv := &Inventory{}
 	if out := inv.Enrich(context.Background(), nil); out != nil {
 		t.Fatalf("expected nil for nil catalog, got %+v", out)
+	}
+}
+
+func TestCDIReadinessRequiresReadyCondition(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"items":[{"metadata":{"name":"pending"}},{"metadata":{"name":"ready"},"status":{"conditions":[{"type":"Ready","status":"True"}]}},{"metadata":{"name":"failed"},"status":{"conditions":[{"type":"Ready","status":"False"}]}}]}`))
+	}))
+	defer server.Close()
+	client, err := kubeapi.New(kubeapi.Config{Endpoint: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := Inventory{Provider: "kubevirt", KubeClient: client, ImageNS: "images"}
+	ready := inv.dataSources(context.Background())
+	if len(ready) != 1 || ready["ready"] != "images" {
+		t.Fatalf("non-ready datasource became deployable: %v", ready)
 	}
 }

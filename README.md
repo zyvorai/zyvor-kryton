@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/zyvorai/zyvor-kryton/actions/workflows/ci.yml/badge.svg)](https://github.com/zyvorai/zyvor-kryton/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/github/license/zyvorai/zyvor-kryton?style=flat-square&color=0071e3&labelColor=1d1d1f)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.23+-0071e3?style=flat-square&labelColor=1d1d1f&logo=go&logoColor=white)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.26.6+-0071e3?style=flat-square&labelColor=1d1d1f&logo=go&logoColor=white)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/zyvorai/kryton.svg)](https://pkg.go.dev/github.com/zyvorai/kryton)
 
 [![Book a demo](https://img.shields.io/badge/Book_a_demo-0071e3?style=for-the-badge)](https://zyvor.dev/schedule?utm_source=github&utm_medium=kryton&utm_campaign=readme_hero)
@@ -24,6 +24,13 @@
 </div>
 
 ---
+
+## Linux templates and native libvirt
+
+Kryton also supports six Linux cloud-image templates, Linux cloud-init on KubeVirt,
+and a native libvirt lifecycle provider. Use `kryton-image` for checksum-pinned image
+acquisition and CDI/libvirt exports. See [Linux setup and test evidence](docs/LINUX-TEMPLATES.md).
+Native libvirt is an initial host backend; guest boot certification requires host validation.
 
 ## What's new
 
@@ -115,7 +122,7 @@ Full walkthroughs: **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)**.
 
 ## Quickstart
 
-Requires **Go 1.23+**.
+Requires **Go 1.26.6+**.
 
 ```bash
 git clone https://github.com/zyvorai/zyvor-kryton.git && cd kryton

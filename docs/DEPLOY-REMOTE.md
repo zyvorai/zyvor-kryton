@@ -96,10 +96,32 @@ ssh <user>@<host> krytonctl doctor
 |------|---------|
 | `/usr/local/bin/krytond` | Control plane |
 | `/usr/local/bin/krytonctl` | CLI |
-| `/etc/systemd/system/kryton.service` | Demo unit (`KRYTON_PROVIDER=demo`, auth disabled) |
+| `/usr/local/bin/kryton-image` | Linux image acquisition (`kryton-image fetch`) |
+| `/etc/systemd/system/kryton.service` | Demo unit (`KRYTON_PROVIDER=demo`, auth disabled) unless `--provider` / `--apikey` |
 | `~/.deployments/kryton` | Remote source checkout (override with `DEPLOY_DIR`) |
 
 The systemd unit is intentionally a **lab demo** (auth disabled). For a shared lab, enable apikey auth — see [AUTH.md](AUTH.md). For production KubeVirt, use Helm (`deploy/helm/kryton`) with API-key auth — see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### Native libvirt (Linux templates)
+
+```bash
+./scripts/deploy-remote.sh <host> <user> --key --apikey --provider libvirt
+```
+
+Preflight requires `virsh`, `qemu-img`, `genisoimage`, `/dev/kvm` and an
+active libvirt network (`KRYTON_LIBVIRT_NETWORK`, default `default`; started if
+inactive). The deploy creates `/var/lib/kryton/machines` as `2750 root:kvm`
+(`KRYTON_QEMU_GROUP` overrides the group) so QEMU can open per-machine disks
+and seeds, plus `/var/lib/kryton/images`. Then acquire images on the host and
+run the boot gate there, since guests sit on the libvirt network:
+
+```bash
+sudo kryton-image fetch -image ubuntu-24.04 -dir /var/lib/kryton/images -sha256 "$APPROVED_SHA256"
+KRYTON_TOKEN=$(sudo cat /etc/kryton/lab.token) SSH_KEY=~/.ssh/kryton-e2e \
+  KRYTON_PROJECT=default KRYTON_E2E_IMAGES="ubuntu-24.04" scripts/e2e-linux-templates.sh
+```
+
+`--provider` is also accepted on redeploys to switch an existing unit.
 
 ### Switching to dockur after deploy
 

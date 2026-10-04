@@ -93,10 +93,10 @@ func (s *Server) proxyWebConsole(w http.ResponseWriter, r *http.Request, upstrea
 		return
 	}
 	prefix := "/api/v1/machines/" + machineID + "/console"
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	origDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		origDirector(req)
+	proxy := &httputil.ReverseProxy{}
+	proxy.Rewrite = func(pr *httputil.ProxyRequest) {
+		pr.SetURL(target)
+		req := pr.Out
 		suffix := strings.TrimPrefix(req.URL.Path, prefix)
 		if suffix == "" {
 			suffix = "/"

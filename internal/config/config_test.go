@@ -313,3 +313,15 @@ func TestLoadRejectsInvalidCombination(t *testing.T) {
 		t.Fatal("expected Load to fail for kubevirt+disabled auth without allow-insecure")
 	}
 }
+
+func TestLibvirtRequiresAuthentication(t *testing.T) {
+	c := Config{Provider: "libvirt", Projects: []string{"default"}, DefaultProject: "default", AuthMode: "disabled"}
+	if err := c.Validate(); err == nil {
+		t.Fatal("libvirt allowed unauthenticated production mode")
+	}
+	c.AuthMode = "apikey"
+	c.APIKeysFile = "/etc/kryton/keys.json"
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

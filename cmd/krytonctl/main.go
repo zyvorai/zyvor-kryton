@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/zyvorai/kryton/internal/auth"
+	"github.com/zyvorai/kryton/internal/model"
 )
 
 type client struct {
@@ -87,6 +88,8 @@ func createCommand(c client, args []string) {
 	cpu := f.Int("cpu", 4, "vCPU")
 	memory := f.Int("memory", 8192, "memory MiB")
 	disk := f.Int("disk", 80, "boot disk GiB")
+	sshKey := f.String("ssh-key", "", "SSH public key file for Linux")
+	username := f.String("username", "", "Linux username (image default if empty)")
 	network := f.String("network", "", "Multus network attachment definition")
 	ttl := f.Int("ttl", 0, "TTL in minutes")
 	project := f.String("project", c.project, "project")
@@ -119,6 +122,22 @@ func createCommand(c client, args []string) {
 		"disk":       map[string]any{"sizeGiB": *disk},
 		"network":    map[string]any{"networkId": *network},
 		"ttlMinutes": *ttl,
+	}
+	if *sshKey != "" || *username != "" {
+		init := model.Initialization{Username: *username}
+		if *sshKey != "" {
+			data, err := os.ReadFile(*sshKey)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(2)
+			}
+			init.SSHAuthorizedKeys = []string{strings.TrimSpace(string(data))}
+		}
+		if err := init.Validate(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		body["initialization"] = init
 	}
 	if dockur := buildDockurOptions(*dUsername, *dPassword, *dHostname, *dLanguage, *dRegion, *dKeyboard, *dProductKey, *dDomain, *dDomainOU, *dSharedDir, *dOemDir, *dCommand, *dCustomISO, *dEdition, *dExtraDisks, *dAudio, *dSecureBoot, *dNoAutologin); dockur != nil {
 		body["dockur"] = dockur
