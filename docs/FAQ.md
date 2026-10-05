@@ -59,8 +59,9 @@ Windows ones, on the `libvirt` provider (a single KVM host) or on `kubevirt`
 (cloud-init). Guests are configured with a username and SSH public keys and
 are password-locked. See [`docs/LINUX-TEMPLATES.md`](LINUX-TEMPLATES.md).
 
-**Which Linux images?** Six amd64 cloud images: Ubuntu 22.04 and 24.04,
-Debian 12 and 13, Rocky Linux 9, and AlmaLinux 9. Kryton ships no images;
+**Which Linux images?** Eleven amd64 cloud images: Ubuntu 22.04, 24.04 and
+26.04, Debian 12 and 13, Rocky Linux 9 and 10, AlmaLinux 9 and 10, CentOS
+Stream 10, and Fedora 44. Kryton ships no images;
 `kryton-image fetch` downloads them from the distribution and only accepts
 them against an operator-approved SHA-256.
 

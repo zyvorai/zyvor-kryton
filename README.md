@@ -17,7 +17,7 @@
 
 **A control plane for Windows and Linux machines.** Portals, CI and automation talk to one REST + CloudEvents contract whether the backend is an in-memory **demo**, real Windows via **[dockur/windows](https://github.com/dockur/windows)** on a lab host, Linux cloud images on a KVM host via **libvirt**, or Windows and Linux VMs on **KubeVirt**.
 
-**4 providers, 1 contract** · **6 Linux templates** · **REST + CloudEvents + OpenAPI** · **Snapshots on CSI** · **Hashed API keys** · **2 Go dependencies**
+**4 providers, 1 contract** · **11 Linux templates** · **REST + CloudEvents + OpenAPI** · **Snapshots on CSI** · **Hashed API keys** · **2 Go dependencies**
 
 📖 **[User guide](docs/USER-GUIDE.md)** · **[Product docs](https://zyvor.dev/docs/kryton?utm_source=github&utm_medium=kryton&utm_campaign=readme_hero)** · **[API](docs/API.md)** · **[GA checklist](docs/GA.md)**
 
@@ -47,7 +47,7 @@ From [CHANGELOG.md](CHANGELOG.md) (1.1.0 and 1.2.0):
 |---|---|
 | Every portal, pipeline and script talks to Windows and Linux VMs differently | **One REST + CloudEvents contract** with OpenAPI at `/openapi.yaml`, whatever the backend |
 | You want to prototype on a laptop and ship on Kubernetes | **Same API, four providers**: `demo` → `dockur` / `libvirt` → `kubevirt` |
-| You need Linux VMs next to Windows ones | **Six Linux cloud-image templates** (Ubuntu, Debian, Rocky, AlmaLinux) with cloud-init, SSH keys and checksum-pinned images |
+| You need Linux VMs next to Windows ones | **Eleven Linux cloud-image templates** (Ubuntu, Debian, Rocky, AlmaLinux, CentOS Stream, Fedora) with cloud-init, SSH keys and checksum-pinned images |
 | Integrations break when a VM moves namespace or gets renamed | **Stable UUID identity**, independent of the provider's own name |
 | Raw KubeVirt gives your apps YAML, not an API | **Machines, lifecycle, snapshots, jobs and an SSE event stream** over HTTP |
 | Shared credentials for automation make auditors nervous | **API keys stored as SHA-256 digests**, TLS, per-caller rate limits, auth never disabled on `kubevirt` |
@@ -161,7 +161,7 @@ See **[docs/KUBEVIRT.md](docs/KUBEVIRT.md)** and **[docs/GOLDEN-IMAGES.md](docs/
 
 ## Linux VMs (libvirt and KubeVirt)
 
-Six amd64 cloud-image templates: **Ubuntu 22.04 / 24.04, Debian 12 / 13, Rocky 9, AlmaLinux 9**. Guests get cloud-init with your SSH keys and user; the UI shows the guest IP and a ready-to-copy `ssh` command (browser console on KubeVirt; not yet on libvirt). `kryton-image` fetches images against an approved SHA-256 and exports them to libvirt or CDI.
+Eleven amd64 cloud-image templates: **Ubuntu 22.04 / 24.04 / 26.04, Debian 12 / 13, Rocky 9 / 10, AlmaLinux 9 / 10, CentOS Stream 10, Fedora 44**. Guests get cloud-init with your SSH keys and user; the UI shows the guest IP and a ready-to-copy `ssh` command (browser console on KubeVirt; not yet on libvirt). `kryton-image` fetches images against an approved SHA-256 and exports them to libvirt or CDI.
 
 ```bash
 # Native libvirt host: deploy, fetch an image, create a VM

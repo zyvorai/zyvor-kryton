@@ -182,7 +182,7 @@ Full dockur option matrix: [DOCKUR.md](DOCKUR.md).
 
 ## 2b. Linux operator (libvirt)
 
-**Goal:** Linux cloud-image VMs (Ubuntu 22.04/24.04, Debian 12/13, Rocky 9, AlmaLinux 9) on one KVM host, without Docker or Kubernetes.
+**Goal:** Linux cloud-image VMs (Ubuntu 22.04/24.04/26.04, Debian 12/13, Rocky 9/10, AlmaLinux 9/10, CentOS Stream 10 and Fedora 44) on one KVM host, without Docker or Kubernetes.
 
 **Host needs:** KVM, libvirt (`virsh`), `qemu-img`, `genisoimage`, and a libvirt network with DHCP (default `default`).
 

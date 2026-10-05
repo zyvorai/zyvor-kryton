@@ -107,7 +107,7 @@ func TestCDIAllLinuxTemplates(t *testing.T) {
 			t.Fatal("missing persistent import")
 		}
 	}
-	if count != 6 {
+	if count != 11 {
 		t.Fatalf("tested %d Linux templates", count)
 	}
 }
