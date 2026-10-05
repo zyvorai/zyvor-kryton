@@ -3,6 +3,18 @@
 Kryton now deploys Linux through the existing machine API. The catalog
 contains eleven amd64 cloud images: Ubuntu 22.04/24.04/26.04, Debian 12/13, Rocky 9/10, AlmaLinux 9/10, CentOS Stream 10 and Fedora 44. Existing Windows/dockur functionality remains available.
 
+| Image ID | Default user | Upstream checksum |
+|---|---|---|
+| `ubuntu-26.04`, `ubuntu-24.04`, `ubuntu-22.04` | `ubuntu` | `SHA256SUMS`, GPG-signed |
+| `debian-13`, `debian-12` | `debian` | `SHA512SUMS` over HTTPS (derive the SHA-256) |
+| `rocky-10`, `rocky-9` | `rocky` | `CHECKSUM`, GPG-signed |
+| `almalinux-10`, `almalinux-9` | `almalinux` | `CHECKSUM`, GPG-signed |
+| `centos-stream-10` | `cloud-user` | `SHA256SUM` over HTTPS |
+| `fedora-44` | `fedora` | Clearsigned `CHECKSUM` |
+
+`initialization.username` overrides the default user. All eleven pass the real
+boot gate on libvirt; see [LINUX-TEST-RESULTS.md](LINUX-TEST-RESULTS.md).
+
 The Go implementation needs no Bento, Packer, Vagrant or VirtualBox. Native
 libvirt provisioning uses the host's `virsh`, `qemu-img` and `genisoimage`;
 KubeVirt uses its existing Kubernetes REST client and CDI.
@@ -128,6 +140,13 @@ EFI. ARM64 is deliberately rejected until both targets have validated profiles.
 Create accepts `initialization.username` and `initialization.sshAuthorizedKeys`.
 Linux guests use locked passwords, disabled SSH password authentication,
 root login disabled, disk growth, and installation/start of `qemu-guest-agent`.
+
+Cloud-init installs `qemu-guest-agent` from the distribution's package
+repositories, so guests need DNS and outbound HTTP(S) on first boot. Without
+them cloud-init never finishes, no guest agent reports an IP, and the machine
+shows no address. On KubeVirt with Cilium's kube-proxy replacement, VM
+masquerade traffic cannot reach the cluster DNS ClusterIP unless Cilium sets
+`bpf-lb-sock-hostns-only: true`; see [KUBEVIRT.md](KUBEVIRT.md#troubleshooting).
 The configured user receives passwordless sudo. Guest package installation
 requires distribution repository access (or a preinstalled agent).
 There is no raw user-data/script API or credential injection into annotations.

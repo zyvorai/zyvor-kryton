@@ -142,7 +142,11 @@ curl -s -X POST "${KRYTON_URL}/api/v1/machines" \
 
 ### Console
 
-KubeVirt machines expose `consoleUrl` when the guest instance is running. Open it in the dashboard or browser to launch an embedded noVNC session proxied through Kryton (`/api/v1/machines/{id}/console`).
+KubeVirt machines expose `consoleUrl` when the guest instance is running. Open it in the dashboard or browser to launch an embedded noVNC session proxied through Kryton (`/api/v1/machines/{id}/console`). With API-key auth the dashboard first mints a short-lived console ticket, because iframes and websockets cannot send an `Authorization` header; see [AUTH.md](AUTH.md#browser-consoles).
+
+### Linux guests
+
+The eleven Linux templates run on KubeVirt from CDI DataSources you import yourself; see [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md#kubevirt-persistent-images). Linux VMs use BIOS, VirtIO and a NoCloud seed, and need outbound package access on first boot to install `qemu-guest-agent`.
 
 ---
 
@@ -166,3 +170,5 @@ helm upgrade --install kryton ./deploy/helm/kryton -n kryton --create-namespace 
 | VM stuck `Provisioning` | `kubectl -n default get dv,pvc,vm` — check CDI import |
 | `kubernetes config` error on start | Set `KRYTON_KUBECONFIG` or `KRYTON_KUBERNETES_ENDPOINT` |
 | Overlay qcow2 upload fails | Script auto-flattens; ensure `qemu-img` is installed |
+| Linux VM runs but never reports an IP; cloud-init hangs on `apt`/`dnf` | Guest DNS is failing. On Cilium with kube-proxy replacement, set `bpf-lb-sock-hostns-only: true` in `cilium-config` and restart the Cilium agents so VM masquerade traffic reaches the DNS ClusterIP |
+| Root disk slightly smaller than requested | Filesystem-mode PVCs lose a few percent to filesystem overhead; request a larger disk or use a Block-mode StorageClass |

@@ -2,6 +2,32 @@
 
 Narrative release write-ups. For the flat, Keep-a-Changelog-style version index, see [CHANGELOG.md](CHANGELOG.md).
 
+## Unreleased
+
+Kryton now runs Linux machines as well as Windows, behind the same API.
+
+### Linux machines
+
+- **Eleven amd64 cloud-image templates**: Ubuntu 22.04, 24.04 and 26.04 LTS; Debian 12 and 13; Rocky Linux 9 and 10; AlmaLinux 9 and 10; CentOS Stream 10; Fedora 44. Create requests take an `initialization` block (username and SSH public keys) that Kryton renders into cloud-init. Guests are password-locked, grow their root disk and install `qemu-guest-agent`. See [docs/LINUX-TEMPLATES.md](docs/LINUX-TEMPLATES.md).
+- **Native libvirt provider** (`KRYTON_PROVIDER=libvirt`) for a single KVM host with no Docker or Kubernetes. Each machine gets its own converted disk and NoCloud seed, and records survive daemon restarts. Snapshots and a browser console are not offered on libvirt yet; `virsh console` works.
+- **KubeVirt** runs the same templates from CDI DataSources, with Linux hardware profiles (BIOS, VirtIO, NoCloud).
+- **`kryton-image`** downloads an image only against an operator-approved SHA-256, stores it by digest with a provenance manifest, and exports libvirt XML, cloud-init and CDI manifests.
+- **Real boot gate**: `scripts/e2e-linux-templates.sh` creates a VM per image and checks boot, SSH, cloud-init, guest agent, disk growth and the distribution version. All eleven templates pass on a libvirt/KVM host; results are in [docs/LINUX-TEST-RESULTS.md](docs/LINUX-TEST-RESULTS.md). Getting there fixed several real defects: Debian's kernel can't see a SATA seed (now virtio-scsi), Debian 13 boot-loops without a video adapter (domains now have VGA), and guest IPs listed loopback first.
+
+### Operator console
+
+- Rebuilt in React + Vite with light and dark themes, a sheet-based create flow, and a machine drawer that shows the guest IP and a ready-to-copy `ssh` command.
+- **Console tickets**: browser consoles now work with API-key auth. The dashboard mints a 10-minute signed ticket (`POST /api/v1/machines/{id}/console-ticket`) that only opens that machine's console, and renews it automatically. See [docs/AUTH.md](docs/AUTH.md#browser-consoles).
+
+### Security and tooling
+
+- Go 1.27.1 minimum, all dependencies upgraded; CI runs gofmt, vet, race tests, golangci-lint, govulncheck and gosec on every change.
+- The console proxy HTML-escapes the machine ID and strips credentials before forwarding to the backend.
+
+### Known limitation
+
+- On KubeVirt clusters using Cilium's kube-proxy replacement, VM masquerade traffic can't reach the cluster DNS service, so Linux cloud-init stalls. Set Cilium's `bpf-lb-sock-hostns-only: true`; see [docs/KUBEVIRT.md](docs/KUBEVIRT.md#troubleshooting).
+
 ## 1.2.0
 
 Reliability and hardening release — no breaking changes.
