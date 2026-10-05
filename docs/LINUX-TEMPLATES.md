@@ -159,6 +159,7 @@ expanded disk/root filesystem and expected distribution/version, and cleans up
 its own machines. It sets a 30-minute TTL as a fallback and uses isolated SSH
 known-hosts files. It does not certify images merely from a Running state.
 
-This change was tested without `/dev/kvm` or a live KubeVirt cluster. Actual
-Linux guest boot, firmware compatibility, Windows boot regressions and real
-backend lifecycle remain host acceptance checks, not claimed as passed.
+All six images pass this gate on a real libvirt/KVM host. On KubeVirt the
+guests boot, but the gate has not passed yet because the lab cluster's Cilium
+setup blocks VM DNS; see [LINUX-TEST-RESULTS.md](LINUX-TEST-RESULTS.md).
+Windows boot regressions remain host acceptance checks.
