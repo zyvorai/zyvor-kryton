@@ -12,10 +12,8 @@ read -r -a images <<< "${KRYTON_E2E_IMAGES:-ubuntu-22.04 ubuntu-24.04 debian-12 
 for tool in curl python3 ssh timeout; do command -v "$tool" >/dev/null; done
 scratch="$(mktemp -d)"
 ids=()
-pf=""
 api() { curl --fail --silent --show-error -H "Authorization: Bearer $KRYTON_TOKEN" -H 'Content-Type: application/json' "$@"; }
 cleanup() {
-  if [[ -n "$pf" ]]; then kill "$pf" 2>/dev/null || true; fi
   for id in "${ids[@]}"; do api -X DELETE "$KRYTON_URL/api/v1/machines/$id?project=$KRYTON_PROJECT" >/dev/null || true; done
   rm -rf "$scratch"
 }
@@ -45,11 +43,15 @@ PY
     sleep 5
   done
   [[ "$ready" == 1 ]] || { echo "$image: boot timeout"; exit 1; }
-  port=22
+  sshargs=(-i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$scratch/$image-known-hosts")
+  # Filesystem-mode PVCs lose a few percent to filesystem overhead.
+  min_disk=21474836480
   if [[ "$provider" == kubevirt ]]; then
-    host=127.0.0.1;port="${SSH_FORWARD_PORT:-22222}"
-    virtctl -n "$KRYTON_NAMESPACE" port-forward "vm/$name" "$port:22" > "$scratch/port-forward.log" 2>&1 &
-    pf=$!
+    # A long-lived port-forward stops accepting connections after the first
+    # failed dial (guest not up yet), so tunnel each SSH attempt separately.
+    host="$name"
+    sshargs+=(-o "ProxyCommand=virtctl port-forward --stdio=true -n $KRYTON_NAMESPACE vm/$name 22")
+    min_disk=20401094656
   else
     host="$(python3 -c 'import json,sys; print(next(iter(json.load(open(sys.argv[1])).get("ipAddresses",[])),""))' "$scratch/machine.json")"
     for ((attempt=0;attempt<60 && ${#host}==0;attempt++)); do
@@ -58,19 +60,18 @@ PY
     done
     [[ -n "$host" ]] || { echo "$image: no guest-agent IP"; exit 1; }
   fi
-  sshargs=(-i "$SSH_KEY" -p "$port" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$scratch/$image-known-hosts")
   connected=0
   for ((attempt=0;attempt<120;attempt++)); do
     if ssh "${sshargs[@]}" "krytontest@$host" true 2>/dev/null; then connected=1;break;fi
     sleep 5
   done
   [[ "$connected" == 1 ]] || { echo "$image: SSH timeout"; exit 1; }
-  timeout 600 ssh "${sshargs[@]}" "krytontest@$host" 'set -e; sudo cloud-init status --wait; sudo systemctl is-active qemu-guest-agent; test "$(lsblk -bdn -o SIZE /dev/vda)" -ge 21474836480; test "$(df -B1 --output=size / | tail -n1)" -ge 16106127360; cat /etc/os-release' > "$scratch/os-release"
+  timeout 600 ssh "${sshargs[@]}" "krytontest@$host" 'set -e; sudo cloud-init status --wait; sudo systemctl is-active qemu-guest-agent; test "$(lsblk -bdn -o SIZE /dev/vda)" -ge '"$min_disk"'; test "$(df -B1 --output=size / | tail -n1)" -ge 16106127360; cat /etc/os-release' > "$scratch/os-release"
   expected_os="${image%-*}";expected_version="${image##*-}"
   grep -q "^ID=\"\?$expected_os\"\?$" "$scratch/os-release"
-  grep -q "^VERSION_ID=\"\?$expected_version\"\?$" "$scratch/os-release"
+  # Rocky and AlmaLinux report a point release ("9.6") for the "9" template.
+  grep -Eq "^VERSION_ID=\"?${expected_version//./\\.}(\.[0-9]+)*\"?$" "$scratch/os-release"
   printf '%s: boot, SSH, cloud-init, guest agent, disk expansion passed\n' "$image"
-  if [[ -n "$pf" ]]; then kill "$pf"; wait "$pf" || true; pf="";fi
   api -X DELETE "$KRYTON_URL/api/v1/machines/$id?project=$KRYTON_PROJECT" >/dev/null
   unset 'ids[${#ids[@]}-1]'
  done

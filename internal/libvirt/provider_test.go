@@ -218,6 +218,9 @@ func TestAllLibvirtDomainXML(t *testing.T) {
 			if strings.Contains(text, "bus='sata'") || !strings.Contains(text, "model='virtio-scsi'") {
 				t.Fatal("seed CD-ROM must sit on virtio-scsi")
 			}
+			if !strings.Contains(text, "<video><model type='vga'/></video>") {
+				t.Fatal("domain needs a video adapter for Debian 13 to boot")
+			}
 			if validator != "" {
 				path := filepath.Join(t.TempDir(), "domain.xml")
 				if err = os.WriteFile(path, []byte(text), 0600); err != nil {

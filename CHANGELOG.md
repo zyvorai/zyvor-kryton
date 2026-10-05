@@ -20,6 +20,8 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 - Minimum Go version raised to 1.27.1 (latest stable) to address standard-library vulnerability scan findings.
 - Libvirt: NoCloud seed on virtio-scsi so Debian cloud kernels (no AHCI) find it; guest IPs exclude loopback/link-local; image listings no longer re-hash artifacts.
+- Libvirt domains include a VGA adapter so Debian 13 no longer boot-loops after GRUB; all six Linux templates pass the real boot gate.
+- Boot gate: accepts Rocky/AlmaLinux point-release `VERSION_ID`, tunnels each KubeVirt SSH attempt through `virtctl port-forward --stdio`, and allows filesystem-PVC overhead in the KubeVirt disk check.
 - Pending CDI DataSources no longer appear ready to deploy; Linux images are rejected by the Windows golden installer.
 - Webhook unit tests use local servers; OpenAPI copies are synchronized and CI uses the module Go version/current compatible lint tool.
 
