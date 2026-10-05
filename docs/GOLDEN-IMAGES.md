@@ -50,6 +50,10 @@ Open **Images → Golden image factory** and click **Build golden image**. The d
 
 Requires docker + `/dev/kvm` on the `krytond` host (`capabilities.goldenImages: true`).
 
+### From Zorvia
+
+Zorvia proxies this API under `/api/v1/kryton/golden` (set `KRYTON_URL`, `KRYTON_TOKEN`, `KRYTON_PROJECT` on the Zorvia server). Its **Golden Images** page starts builds, shows progress, runs the CDI bootstrap and shows the passport, alongside Zorvia's own Linux cloud-image imports and VM captures. Starting a build needs the Zorvia `vm.create` permission; the Kryton token never reaches the browser. When `goldenImages` is false, the page shows the builder as unavailable and passes through Kryton's error.
+
 ### Manual (interactive)
 
 ```bash
