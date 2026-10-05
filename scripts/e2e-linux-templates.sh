@@ -8,7 +8,7 @@ set -euo pipefail
 KRYTON_URL="${KRYTON_URL:-http://127.0.0.1:8080}"
 KRYTON_PROJECT="${KRYTON_PROJECT:-linux-tests}"
 KRYTON_NAMESPACE="${KRYTON_NAMESPACE:-$KRYTON_PROJECT}"
-read -r -a images <<< "${KRYTON_E2E_IMAGES:-ubuntu-22.04 ubuntu-24.04 debian-12 debian-13 rocky-9 almalinux-9}"
+read -r -a images <<< "${KRYTON_E2E_IMAGES:-ubuntu-22.04 ubuntu-24.04 ubuntu-26.04 debian-12 debian-13 rocky-9 rocky-10 almalinux-9 almalinux-10 centos-stream-10 fedora-44}"
 for tool in curl python3 ssh timeout; do command -v "$tool" >/dev/null; done
 scratch="$(mktemp -d)"
 ids=()
@@ -68,6 +68,7 @@ PY
   [[ "$connected" == 1 ]] || { echo "$image: SSH timeout"; exit 1; }
   timeout 600 ssh "${sshargs[@]}" "krytontest@$host" 'set -e; sudo cloud-init status --wait; sudo systemctl is-active qemu-guest-agent; test "$(lsblk -bdn -o SIZE /dev/vda)" -ge '"$min_disk"'; test "$(df -B1 --output=size / | tail -n1)" -ge 16106127360; cat /etc/os-release' > "$scratch/os-release"
   expected_os="${image%-*}";expected_version="${image##*-}"
+  expected_os="${expected_os%-stream}"
   grep -q "^ID=\"\?$expected_os\"\?$" "$scratch/os-release"
   # Rocky and AlmaLinux report a point release ("9.6") for the "9" template.
   grep -Eq "^VERSION_ID=\"?${expected_version//./\\.}(\.[0-9]+)*\"?$" "$scratch/os-release"

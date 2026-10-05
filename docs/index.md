@@ -18,7 +18,7 @@ hero:
     - {icon: "❓", title: "FAQ", description: "Questions people evaluating Kryton actually ask, before they've decided to adopt it.", href: "FAQ.md"}
     - {icon: "📘", title: "User guide", description: "Pick the path that matches your role — evaluator, lab operator, production operator, or integrator.", href: "USER-GUIDE.md"}
     - {icon: "🪟", title: "KubeVirt Windows VMs", description: "Provision Windows 11 on Kubernetes via KubeVirt — callers never touch VirtualMachine YAML.", href: "KUBEVIRT.md"}
-    - {icon: "🐧", title: "Linux VMs", description: "Six Linux cloud-image templates with cloud-init and SSH keys, on a libvirt KVM host or KubeVirt.", href: "LINUX-TEMPLATES.md"}
+    - {icon: "🐧", title: "Linux VMs", description: "Eleven Linux cloud-image templates with cloud-init and SSH keys, on a libvirt KVM host or KubeVirt.", href: "LINUX-TEMPLATES.md"}
     - {icon: "🧩", title: "Architecture", description: "One stable machine API; providers translate it into demo state, dockur compose stacks, libvirt domains, or KubeVirt VirtualMachines.", href: "ARCHITECTURE.md"}
     - {icon: "✅", title: "GA path", description: "The KubeVirt provider is the GA path; dockur remains a lab installer and libvirt an initial host backend, not GA.", href: "GA.md"}
 footnotes:

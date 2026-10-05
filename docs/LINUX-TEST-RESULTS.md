@@ -18,7 +18,7 @@ Runtime: Linux amd64, Go 1.26.6. Guest hardware and a cluster are unavailable.
 | All six distribution source URLs | HTTP HEAD returned 200; no OS image boot/download claimed |
 | JS/shell syntax, license headers, diff whitespace | Passed |
 | Gosec 2.29.0 | Not clean: 40 existing findings; baseline has 41; no new file/rule/detail findings after documented review of controlled file/command operations |
-| Real guest boot / SSH / cloud-init / root expansion on libvirt | All six images passed (see below) |
+| Real guest boot / SSH / cloud-init / root expansion on libvirt | All eleven images passed (see below) |
 | Real guest boot on KubeVirt | Blocked by lab cluster networking: guest boots, but DNS fails (see below) |
 
 The gosec repository-wide CI gate can remain red because of the existing
@@ -43,6 +43,11 @@ Images were acquired with `kryton-image fetch`:
 | debian-13 | `trixie/latest/SHA512SUMS` over HTTPS; bytes matched SHA-512, SHA-256 derived | `b2aca2be…f23b9d1` |
 | rocky-9 | `CHECKSUM` signed by the Rocky release key 2022 (`21CB256A…350D275D`), good signature | `92c206cc…ab4eec8` |
 | almalinux-9 | `CHECKSUM` signed by the AlmaLinux OS 9 key (`BF18AC28…CB86B3716`), good signature | `6bdab637…002d74b` |
+| ubuntu-26.04 | `resolute/current/SHA256SUMS`, `gpgv` good signature from the Ubuntu cloud image key | `88006518…d97332b2` |
+| rocky-10 | `CHECKSUM` signed by the Rocky Linux 10 key (`FC226859…6FEDFC85`), good signature | `9fc9e9ff…bbc4b48` |
+| almalinux-10 | `CHECKSUM` signed by the AlmaLinux OS 10 key (`EE6DB7B9…C2A1E572`), good signature | `bc59485c…4da1e10a` |
+| centos-stream-10 | `SHA256SUM` over HTTPS (no signature published beside the image) | `42bd0c8f…a243c0` |
+| fedora-44 | `Fedora-Cloud-44-1.7-x86_64-CHECKSUM`, clearsigned by the Fedora 44 key, good signature | `28680fe5…71f90b7f` |
 
 `scripts/e2e-linux-templates.sh` with all six images, run on the host so
 guests are reachable on the libvirt network (about 11 minutes):
@@ -54,6 +59,17 @@ almalinux-9: boot, SSH, cloud-init, guest agent, disk expansion passed
 ubuntu-22.04: boot, SSH, cloud-init, guest agent, disk expansion passed
 ubuntu-24.04: boot, SSH, cloud-init, guest agent, disk expansion passed
 debian-12: boot, SSH, cloud-init, guest agent, disk expansion passed
+```
+
+The five newer templates were added afterwards and run the same way
+(about 7 minutes):
+
+```
+ubuntu-26.04: boot, SSH, cloud-init, guest agent, disk expansion passed
+rocky-10: boot, SSH, cloud-init, guest agent, disk expansion passed
+almalinux-10: boot, SSH, cloud-init, guest agent, disk expansion passed
+centos-stream-10: boot, SSH, cloud-init, guest agent, disk expansion passed
+fedora-44: boot, SSH, cloud-init, guest agent, disk expansion passed
 ```
 
 The first real runs found these defects, now fixed with regression tests:

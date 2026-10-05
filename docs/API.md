@@ -215,7 +215,7 @@ Finding `status` values: `pass` · `warn` · `fail`. CLI equivalent: `krytonctl 
 
 Validate CPU and memory against the image catalog minimums. Names must be DNS-style labels (≤ 63 characters).
 
-Linux templates (`ubuntu-24.04`, `ubuntu-22.04`, `debian-12`, `debian-13`, `rocky-9`, `almalinux-9`) take the same body plus an optional `initialization` block, rendered into cloud-init. Guests are password-locked, so supply at least one key to log in:
+Linux templates (`ubuntu-26.04`, `ubuntu-24.04`, `ubuntu-22.04`, `debian-13`, `debian-12`, `rocky-10`, `rocky-9`, `almalinux-10`, `almalinux-9`, `centos-stream-10`, `fedora-44`) take the same body plus an optional `initialization` block, rendered into cloud-init. Guests are password-locked, so supply at least one key to log in:
 
 ```json
 {

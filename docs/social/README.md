@@ -19,7 +19,7 @@ Regenerate after any edit:
 ```
 
 Every claim shown on the cards (Stable UUIDs, `demo` → `dockur` / `libvirt` → `kubevirt`, Windows and Linux guests,
-KubeVirt = GA path, `dockur` lab installer and `libvirt` initial host backend not GA, six Linux templates, Go 1.27.1+, Apache-2.0, etc.)
+KubeVirt = GA path, `dockur` lab installer and `libvirt` initial host backend not GA, eleven Linux templates, Go 1.27.1+, Apache-2.0, etc.)
 is sourced from the project's top-level `README.md` and the rest of `docs/`.
 If you change wording on a card, verify it against those sources — don't
 invent new claims.

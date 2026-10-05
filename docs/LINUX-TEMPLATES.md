@@ -1,8 +1,7 @@
 # Linux images on libvirt and KubeVirt
 
-Kryton now deploys Linux through the existing machine API. The first catalog
-contains six amd64 cloud images: Ubuntu 22.04/24.04, Debian 12/13, Rocky 9 and
-AlmaLinux 9. Existing Windows/dockur functionality remains available.
+Kryton now deploys Linux through the existing machine API. The catalog
+contains eleven amd64 cloud images: Ubuntu 22.04/24.04/26.04, Debian 12/13, Rocky 9/10, AlmaLinux 9/10, CentOS Stream 10 and Fedora 44. Existing Windows/dockur functionality remains available.
 
 The Go implementation needs no Bento, Packer, Vagrant or VirtualBox. Native
 libvirt provisioning uses the host's `virsh`, `qemu-img` and `genisoimage`;
@@ -38,8 +37,16 @@ Distribution verification references:
 - Ubuntu: https://cloud-images.ubuntu.com/noble/current/SHA256SUMS
 - Debian: https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
   (after verifying the published signature and bytes, calculate an approved SHA-256)
-- Rocky: https://download.rockylinux.org/pub/rocky/9/images/x86_64/
+- Rocky: https://download.rockylinux.org/pub/rocky/10/images/x86_64/ (signed `CHECKSUM`)
 - AlmaLinux: https://wiki.almalinux.org/cloud/Generic-cloud.html
+- CentOS Stream: https://cloud.centos.org/centos/10-stream/x86_64/images/ (`SHA256SUM` over HTTPS)
+- Fedora: https://fedoraproject.org/security/ (clearsigned `CHECKSUM` per release)
+
+Rocky 10, AlmaLinux 10 and CentOS Stream 10 are built for x86-64-v3, so the
+guest CPU must expose AVX2. Kryton's libvirt domains use `host-model` and
+KubeVirt passes the host model by default, so this only matters on old hosts or
+with a restrictive CPU model. The Fedora URL names a specific compose
+(`44-1.7`) because Fedora has no `latest` alias; update it with each release.
 
 ## Native libvirt host
 
@@ -131,8 +138,8 @@ installer rejects Linux images; acquire them with `kryton-image fetch`.
 
 ## Test evidence and the real boot gate
 
-Automated tests cover all six Linux profiles and all 12 Windows profiles through
-KubeVirt REST creation, all six CDI exports and libvirt XMLs, libvirt lifecycle /
+Automated tests cover all eleven Linux profiles and all 12 Windows profiles through
+KubeVirt REST creation, all eleven CDI exports and libvirt XMLs, libvirt lifecycle /
 restart recovery / project isolation / failure retention, checksums, tampering,
 size limits and invalid initialization. Disk-tool integration runs real
 QCOW2 conversion/resize and extracts the NoCloud ISO. CI installs disk/schema
@@ -143,7 +150,7 @@ cloud-config and CDI JSON. Example artifact URLs and disk paths are placeholders
 replace them before deployment. These files are configuration examples, not
 prebuilt operating-system images.
 
-On each target, run the real guest gate after acquiring/importing all six images:
+On each target, run the real guest gate after acquiring/importing the images:
 
 ```bash
 KRYTON_URL=https://YOUR_KRYTON KRYTON_TOKEN="$TOKEN" \
@@ -159,7 +166,7 @@ expanded disk/root filesystem and expected distribution/version, and cleans up
 its own machines. It sets a 30-minute TTL as a fallback and uses isolated SSH
 known-hosts files. It does not certify images merely from a Running state.
 
-All six images pass this gate on a real libvirt/KVM host. On KubeVirt the
+All eleven images pass this gate on a real libvirt/KVM host. On KubeVirt the
 guests boot, but the gate has not passed yet because the lab cluster's Cilium
 setup blocks VM DNS; see [LINUX-TEST-RESULTS.md](LINUX-TEST-RESULTS.md).
 Windows boot regressions remain host acceptance checks.

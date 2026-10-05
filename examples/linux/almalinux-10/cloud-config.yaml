@@ -1,0 +1,2 @@
+#cloud-config
+{"disable_root":true,"growpart":{"devices":["/"],"ignore_growroot_disabled":false,"mode":"auto"},"hostname":"linux-template","manage_etc_hosts":true,"packages":["qemu-guest-agent"],"resize_rootfs":true,"runcmd":[["systemctl","enable","--now","qemu-guest-agent"]],"ssh_pwauth":false,"users":[{"lock_passwd":true,"name":"almalinux","shell":"/bin/bash","sudo":"ALL=(ALL) NOPASSWD:ALL"}]}

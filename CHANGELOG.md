@@ -8,6 +8,7 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ### Added
 
+- Five more Linux templates: Ubuntu 26.04 LTS, Rocky Linux 10, AlmaLinux 10, CentOS Stream 10 and Fedora 44 (eleven in total); examples regenerated.
 - Six amd64 Linux cloud-image templates, typed SSH/cloud-init initialization, Linux-specific KubeVirt hardware profiles, and provider-aware UI/CLI creation.
 - Native local libvirt lifecycle backend with persistent UUID records, isolated converted disks, NoCloud seeds, restart recovery, and explicit unsupported snapshot/console capabilities.
 - `kryton-image` for checksum-pinned acquisition, immutable artifacts, provenance records and CDI/libvirt/cloud-init exports; generated examples and a real guest boot acceptance script.
