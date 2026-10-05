@@ -167,6 +167,30 @@ Use `export KRYTON_TOKEN=<saved raw token>` for `krytonctl` / CI. Chart details:
 
 ---
 
+## Browser consoles
+
+Iframes, new tabs and websockets cannot send an `Authorization` header, so the
+dashboard asks for a console ticket first:
+
+```bash
+curl -X POST -H "Authorization: Bearer $KRYTON_TOKEN" \
+  "http://127.0.0.1:8080/api/v1/machines/$ID/console-ticket?project=default"
+```
+
+Any key with `viewer` access to the machine's project can mint one. A ticket:
+
+- lasts 10 minutes, and the dashboard renews it every 8;
+- is accepted as `?console_ticket=` or as the HttpOnly, `SameSite=Strict`
+  `kryton_console` cookie that the mint call sets (scoped to
+  `/api/v1/machines/{id}/`, `Secure` over TLS);
+- only allows `GET`/`HEAD` on that one machine's `/console`, `/console/...`
+  and `/vnc` paths, never other API calls;
+- is signed with a per-process key, so restarting krytond invalidates every
+  ticket.
+
+The console proxy strips the ticket, `Authorization` and `Cookie` before
+forwarding to the backend.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -175,6 +199,7 @@ Use `export KRYTON_TOKEN=<saved raw token>` for `krytonctl` / CI. Chart details:
 | `401` from API/CLI | Export `KRYTON_TOKEN` with the **raw** token, not the hash |
 | `parse api keys file: cannot unmarshal array` | Use `{"keys":[…]}` wrapper, not a top-level JSON array |
 | Auto-auth does nothing | Need `KRYTON_LAB_AUTO_AUTH=true`, `KRYTON_ALLOW_INSECURE=true`, `KRYTON_AUTH_MODE=apikey`, and `KRYTON_LAB_TOKEN_FILE` pointing at `lab.token` |
+| Console iframe shows `401` | The ticket expired or krytond restarted; reopen the console to mint a new one |
 | Lost the raw token | Rotate with `KRYTON_ROTATE_KEYS=true ./scripts/ensure-api-keys.sh` (old token stops working after restart) |
 
 ---

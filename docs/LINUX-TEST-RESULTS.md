@@ -1,31 +1,23 @@
-# Linux template validation — 4 October 2026
+# Linux template validation — 5 October 2026
 
-Base commit: `3aabfb285fbcf215dd52b79ca34dfeadb56f0b46`.
-Runtime: Linux amd64, Go 1.26.6. Guest hardware and a cluster are unavailable.
+Base commit: `743805e` (main). Toolchain: Go 1.27.1, linux/amd64.
 
 | Check | Result |
 |---|---|
-| `make check` (format, full Go suite, vet, all three CLI/daemon builds) | Passed |
-| `go test -race ./...` | Passed |
-| golangci-lint 2.14.0 | Passed, zero issues |
-| govulncheck | Passed, no vulnerabilities found with Go 1.26.6 |
-| KubeVirt REST VM creation for six Linux and twelve Windows templates | Passed with local Kubernetes REST fixture |
-| CDI persistent import/DataSource exports for all six Linux templates | Passed |
+| CI on main: gofmt, `go vet`, `go test -race ./...`, golangci-lint 2.14.0, govulncheck, gosec 2.29.0 | Passed |
+| CI Linux templates job (disk tools and libvirt schema installed, so integration tests run) | Passed |
+| KubeVirt REST VM creation for eleven Linux and twelve Windows templates | Passed with local Kubernetes REST fixture |
+| CDI persistent import/DataSource exports for all eleven Linux templates | Passed |
 | Native libvirt lifecycle, restart recovery, project isolation, failure retention | Passed with injected virsh runner |
-| Libvirt domain XML schema for all six Linux templates | Passed using installed libvirt schema and xmllint |
+| Libvirt domain XML for all eleven Linux templates | Passed libvirt schema validation |
 | Real QCOW2 conversion/resize and NoCloud ISO extraction | Passed; uses qemu-img, genisoimage and isoinfo |
-| All six cloud-config documents | Passed upstream cloud-init 26.1 JSON Schema validation |
-| All six distribution source URLs | HTTP HEAD returned 200; no OS image boot/download claimed |
-| JS/shell syntax, license headers, diff whitespace | Passed |
-| Gosec 2.29.0 | Not clean: 40 existing findings; baseline has 41; no new file/rule/detail findings after documented review of controlled file/command operations |
+| `kryton-image validate` (cloud-config and domain XML for every template) | Passed |
 | Real guest boot / SSH / cloud-init / root expansion on libvirt | All eleven images passed (see below) |
 | Real guest boot on KubeVirt | Blocked by lab cluster networking: guest boots, but DNS fails (see below) |
 
-The gosec repository-wide CI gate can remain red because of the existing
-findings. They were not globally suppressed. New artifact/libvirt operations
-include narrowly documented annotations for operator-controlled paths, a fixed
-host-tool allowlist, and intentional QEMU-group/public-artifact permissions.
-These annotations are not evidence of guest boot certification.
+gosec findings for operator-controlled file paths and the fixed host-tool
+allowlist carry narrow `#nosec` annotations with reasons; nothing is globally
+suppressed. Those annotations are not evidence of guest boot certification.
 
 ## Native libvirt on a real KVM host
 
@@ -49,7 +41,7 @@ Images were acquired with `kryton-image fetch`:
 | centos-stream-10 | `SHA256SUM` over HTTPS (no signature published beside the image) | `42bd0c8f…a243c0` |
 | fedora-44 | `Fedora-Cloud-44-1.7-x86_64-CHECKSUM`, clearsigned by the Fedora 44 key, good signature | `28680fe5…71f90b7f` |
 
-`scripts/e2e-linux-templates.sh` with all six images, run on the host so
+`scripts/e2e-linux-templates.sh` with the original six images, run on the host so
 guests are reachable on the libvirt network (about 11 minutes):
 
 ```

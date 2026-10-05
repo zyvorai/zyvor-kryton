@@ -8,6 +8,7 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ### Added
 
+- Signed, 10-minute console tickets (`POST /api/v1/machines/{id}/console-ticket`) so browser consoles work with API-key auth; the dashboard renews them automatically.
 - Five more Linux templates: Ubuntu 26.04 LTS, Rocky Linux 10, AlmaLinux 10, CentOS Stream 10 and Fedora 44 (eleven in total); examples regenerated.
 - Six amd64 Linux cloud-image templates, typed SSH/cloud-init initialization, Linux-specific KubeVirt hardware profiles, and provider-aware UI/CLI creation.
 - Native local libvirt lifecycle backend with persistent UUID records, isolated converted disks, NoCloud seeds, restart recovery, and explicit unsupported snapshot/console capabilities.
@@ -21,8 +22,9 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 - Minimum Go version raised to 1.27.1 (latest stable) to address standard-library vulnerability scan findings.
 - Libvirt: NoCloud seed on virtio-scsi so Debian cloud kernels (no AHCI) find it; guest IPs exclude loopback/link-local; image listings no longer re-hash artifacts.
-- Libvirt domains include a VGA adapter so Debian 13 no longer boot-loops after GRUB; all six Linux templates pass the real boot gate.
+- Libvirt domains include a VGA adapter so Debian 13 no longer boot-loops after GRUB; all eleven Linux templates pass the real boot gate.
 - Boot gate: accepts Rocky/AlmaLinux point-release `VERSION_ID`, tunnels each KubeVirt SSH attempt through `virtctl port-forward --stdio`, and allows filesystem-PVC overhead in the KubeVirt disk check.
+- Console proxy HTML-escapes the machine ID in its fallback page, and no longer forwards the console ticket, `Authorization` or `Cookie` to the backend.
 - Pending CDI DataSources no longer appear ready to deploy; Linux images are rejected by the Windows golden installer.
 - Webhook unit tests use local servers; OpenAPI copies are synchronized and CI uses the module Go version/current compatible lint tool.
 
