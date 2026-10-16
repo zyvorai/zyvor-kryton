@@ -1,0 +1,201 @@
+<!doctype html>
+<!-- Copyright 2026 Zyvor AI Labs · https://zyvor.dev · SPDX-License-Identifier: Apache-2.0 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>Kryton · One stable machine API for Windows and Linux</title>
+  <meta name="description" content="A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends. Free under Apache-2.0." />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="canonical" href="https://zyvorai.github.io/zyvor-kryton/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Kryton" />
+  <meta property="og:title" content="Kryton · One stable machine API for Windows and Linux" />
+  <meta property="og:description" content="A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends. Free under Apache-2.0." />
+  <meta property="og:url" content="https://zyvorai.github.io/zyvor-kryton/" />
+  <meta name="twitter:card" content="summary" />
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="site.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Kryton","description":"A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends.","codeRepository":"https://github.com/zyvorai/zyvor-kryton","programmingLanguage":"Go","license":"https://www.apache.org/licenses/LICENSE-2.0","url":"https://zyvorai.github.io/zyvor-kryton/"}
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="bar">
+  <a class="brand" href="./" aria-label="Kryton home">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0071e3"/><path d="M11 8v16M21.5 8.5 12.5 16l9 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>KRYTON</span></a>
+  <nav aria-label="Sections" id="sections"><a href="#features">Why</a><a href="#providers">Providers</a><a href="#how">How it fits</a><a href="#quickstart">Quickstart</a><a href="#license">License</a><a href="#support">Support</a></nav>
+  <div class="bar-actions">
+    <button id="theme" class="icon" type="button" aria-label="Switch to dark mode" aria-pressed="false"><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    <a class="btn small" href="https://github.com/zyvorai/zyvor-kryton">GitHub</a>
+    <a class="btn small primary" href="#quickstart">Quickstart</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-h">
+    <div>
+      <p class="kicker">Zyvor · machine control plane</p>
+      <h1 id="hero-h">One stable machine API. <em>Real Windows and Linux behind it.</em></h1>
+      <p class="lede">A control plane for Windows and Linux machines. Portals, CI and automation talk to <strong>one REST + CloudEvents contract</strong> whether the backend is an in-memory demo, real Windows through dockur on a lab host, Linux cloud images on a KVM host through libvirt, or Windows and Linux VMs on KubeVirt.</p>
+      <p class="cta"><a class="btn primary" href="#quickstart">Run the demo</a><a class="btn" href="docs/">Read the docs</a><a class="link" href="https://github.com/zyvorai/zyvor-kryton">Source on GitHub</a></p>
+      <ul class="chips" aria-label="Facts"><li class="ok">Apache-2.0</li><li>Go 1.27.1+</li><li>REST + CloudEvents</li><li>OpenAPI</li><li>KubeVirt</li></ul>
+    </div>
+    <div class="term" role="group" aria-label="Local demo commands">
+      <div class="term-head"><i></i><i></i><i></i><span>make demo</span></div>
+<pre><code><span class="c"># demo provider, auth disabled: evaluation only</span>
+<span class="p">$</span> make demo
+<span class="c"># open http://localhost:8080</span>
+<span class="p">$</span> go run ./cmd/krytonctl list
+<span class="p">$</span> go run ./cmd/krytonctl create win-dev-01
+<span class="p">$</span> go run ./cmd/krytonctl doctor<span class="cur"></span></code></pre>
+    </div>
+  </section>
+
+  <section class="band" aria-label="At a glance">
+    <div><b>4 providers, 1 contract</b><span>demo, dockur, libvirt, kubevirt.</span></div>
+    <div><b>11 Linux templates</b><span>Ubuntu, Debian, Rocky, AlmaLinux, CentOS Stream, Fedora.</span></div>
+    <div><b>Hashed API keys</b><span>Stored as SHA-256 digests. Auth is never disabled on kubevirt.</span></div>
+    <div><b>2 Go dependencies</b><span>gorilla/websocket and golang.org/x/time.</span></div>
+  </section>
+
+  <section id="features" aria-labelledby="features-h">
+    <h2 id="features-h">Why a machine API</h2>
+    <p class="sub">Each row is a problem the README names and the part of Kryton that answers it.</p>
+    <div class="grid">
+      <article class="card"><h3>One contract</h3><p>REST + CloudEvents with OpenAPI at <code>/openapi.yaml</code>, whatever the backend. Pagination with <code>limit</code> and <code>cursor</code>.</p></article>
+      <article class="card"><h3>Lab to production, same API</h3><p>Prototype on <code>demo</code>, move to <code>dockur</code> or <code>libvirt</code>, ship on <code>kubevirt</code>. Callers do not change.</p></article>
+      <article class="card"><h3>Linux next to Windows</h3><p>Eleven Linux cloud-image templates with cloud-init, SSH keys and checksum-pinned images, fetched against an approved SHA-256.</p></article>
+      <article class="card"><h3>Stable identity</h3><p>A UUID that survives a VM moving namespace or being renamed, independent of the provider's own name.</p></article>
+      <article class="card"><h3>More than YAML</h3><p>Machines, lifecycle, snapshots, jobs and an SSE event stream over HTTP, instead of raw KubeVirt custom resources.</p></article>
+      <article class="card"><h3>Credentials auditors can read</h3><p>API keys stored as SHA-256 digests, TLS, per-caller rate limits (<code>429</code> / <code>RATE_LIMITED</code>, off by default).</p></article>
+      <article class="card"><h3>Is this host ready?</h3><p><code>krytonctl doctor</code> checks auth, catalog, namespaces, DataSources, snapshot CRDs and StorageClass to snapshot class.</p></article>
+      <article class="card"><h3>Browser console</h3><p>Embedded noVNC console with no CDN dependency, Copy RDP, and a dockur catalog of 12 images.</p></article>
+      <article class="card"><h3>Snapshots on CSI</h3><p>Create, list, restore and delete through the API, the UI and <code>krytonctl</code>. Not available on the dockur provider.</p></article>
+    </div>
+  </section>
+
+  <section id="providers" aria-labelledby="providers-h">
+    <h2 id="providers-h">Four providers, honest status</h2>
+    <p class="sub">The README is explicit about what is production-ready. <strong>KubeVirt is the GA path</strong>; the checklist is in <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/GA.md">docs/GA.md</a>.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th scope="col">Provider</th><th scope="col">What it drives</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        <tr><td><code>kubevirt</code></td><td>Windows and Linux VMs on KubeVirt, behind Helm, with API keys and TLS</td><td><span class="tag ok">GA path</span></td></tr>
+        <tr><td><code>dockur</code></td><td>Real Windows through dockur/windows on a Docker or Podman + KVM host</td><td><span class="tag warn">Lab installer, not GA</span></td></tr>
+        <tr><td><code>libvirt</code></td><td>Linux cloud images on a KVM host</td><td><span class="tag warn">Initial host backend, not GA</span></td></tr>
+        <tr><td><code>demo</code></td><td>In-memory machines, auth disabled</td><td><span class="tag warn">Evaluation only</span></td></tr>
+      </tbody></table></div>
+    <div class="grid two">
+      <article class="card"><h3>What Kryton is not</h3><p>Not a Windows installer, activation service or media distributor. Microsoft licensing remains the operator's responsibility. Linux images are fetched by the operator against an approved checksum; Kryton ships none.</p></article>
+      <article class="card"><h3>Out of GA scope</h3><p>Multiple <code>krytond</code> replicas (single-writer reconciler, in-process event bus; <code>replicaCount: 1</code>) and live migration of the guest VM.</p></article>
+    </div>
+  </section>
+
+  <section id="how" aria-labelledby="how-h">
+    <h2 id="how-h">How it fits</h2>
+    <p class="sub">Kryton is split at the <strong>provider boundary</strong>. Callers see one stable machine API; providers translate it into demo state, dockur compose stacks, libvirt domains or KubeVirt VirtualMachines. On KubeVirt it runs on top of it: the question is whether you build the application layer yourself.</p>
+    <figure class="diagram">
+<svg viewBox="0 0 1000 440" role="img" aria-labelledby="dg-t dg-d"><title id="dg-t">Kryton architecture</title><desc id="dg-d">Callers reach krytond over REST and CloudEvents. Below the provider boundary sit four providers: demo, dockur, libvirt and kubevirt.</desc><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="dg-arrow" d="M0 0 10 5 0 10z"/></marker><marker id="ahs" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="dg-arrow" d="M0 0 10 5 0 10z"/></marker></defs>
+<rect class="dg-box" x="30" y="20" width="270" height="64" rx="12"/>
+<text class="dg-t" x="165.0" y="50" text-anchor="middle">krytonctl</text>
+<text class="dg-s" x="165.0" y="69" text-anchor="middle">CLI, talks to the API</text>
+<rect class="dg-box" x="330" y="20" width="340" height="64" rx="12"/>
+<text class="dg-t" x="500.0" y="50" text-anchor="middle">Portals · CI · automation</text>
+<text class="dg-s" x="500.0" y="69" text-anchor="middle">REST + CloudEvents, OpenAPI</text>
+<rect class="dg-box" x="700" y="20" width="270" height="64" rx="12"/>
+<text class="dg-t" x="835.0" y="50" text-anchor="middle">Browser UI</text>
+<text class="dg-s" x="835.0" y="69" text-anchor="middle">noVNC console, snapshots</text>
+<path class="dg-line" d="M165 84 L165 140" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<path class="dg-line" d="M500 84 L500 140" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<path class="dg-line" d="M835 84 L835 140" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<rect class="dg-hi" x="30" y="140" width="940" height="110" rx="12"/>
+<text class="dg-t" x="500.0" y="177" text-anchor="middle">krytond</text>
+<text class="dg-s" x="500.0" y="196" text-anchor="middle">Machines, lifecycle, snapshots, jobs</text>
+<text class="dg-s" x="500.0" y="212" text-anchor="middle">SSE event stream · API keys stored as SHA-256 digests · per-caller rate limits</text>
+<text class="dg-s" x="500.0" y="228" text-anchor="middle">Stable UUID identity, independent of the backend&#x27;s own name</text>
+<line class="dg-zone" x1="30" y1="292" x2="970" y2="292"/>
+<rect x="352" y="278" width="296" height="28" rx="14" fill="var(--bg2)"/>
+<text class="dg-z" x="500" y="297" text-anchor="middle">PROVIDER BOUNDARY</text>
+<path class="dg-line" d="M140 250 L140 336" marker-end="url(#ah)"/>
+<path class="dg-line" d="M380 250 L380 336" marker-end="url(#ah)"/>
+<path class="dg-line" d="M620 250 L620 336" marker-end="url(#ah)"/>
+<path class="dg-line" d="M860 250 L860 336" marker-end="url(#ah)"/>
+<rect class="dg-box" x="30" y="336" width="220" height="84" rx="12"/>
+<text class="dg-t" x="140.0" y="368" text-anchor="middle">demo</text>
+<text class="dg-s" x="140.0" y="387" text-anchor="middle">In memory</text>
+<text class="dg-s" x="140.0" y="403" text-anchor="middle">Evaluation only</text>
+<rect class="dg-box" x="270" y="336" width="220" height="84" rx="12"/>
+<text class="dg-t" x="380.0" y="368" text-anchor="middle">dockur</text>
+<text class="dg-s" x="380.0" y="387" text-anchor="middle">Windows via dockur/windows</text>
+<text class="dg-s" x="380.0" y="403" text-anchor="middle">Lab installer, not GA</text>
+<rect class="dg-box" x="510" y="336" width="220" height="84" rx="12"/>
+<text class="dg-t" x="620.0" y="368" text-anchor="middle">libvirt</text>
+<text class="dg-s" x="620.0" y="387" text-anchor="middle">Linux cloud images, KVM host</text>
+<text class="dg-s" x="620.0" y="403" text-anchor="middle">Initial backend, not GA</text>
+<rect class="dg-hi" x="750" y="336" width="220" height="84" rx="12"/>
+<text class="dg-t" x="860.0" y="368" text-anchor="middle">kubevirt</text>
+<text class="dg-s" x="860.0" y="387" text-anchor="middle">KubeVirt + CDI, Helm</text>
+<text class="dg-s" x="860.0" y="403" text-anchor="middle">The GA path</text>
+</svg>
+<figcaption>One contract on top, interchangeable backends underneath. Source: README and <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</figcaption></figure>
+    <div class="tablewrap"><table>
+      <thead><tr><th scope="col">You are</th><th scope="col">Do this</th><th scope="col">Provider</th><th scope="col">Auth</th></tr></thead>
+      <tbody>
+        <tr><td>Trying locally</td><td><code>make demo</code> on <code>:8080</code></td><td><code>demo</code></td><td>off</td></tr>
+        <tr><td>Real Windows in a lab</td><td>Remote deploy and dockur</td><td><code>dockur</code></td><td>API key</td></tr>
+        <tr><td>Linux VMs on a KVM host</td><td>Deploy with <code>--provider libvirt</code></td><td><code>libvirt</code></td><td>API key</td></tr>
+        <tr><td>Production Kubernetes</td><td>Golden image, KubeVirt and Helm</td><td><code>kubevirt</code></td><td>API key + TLS</td></tr>
+        <tr><td>Portal or CI</td><td>The API with <code>KRYTON_TOKEN</code></td><td>any</td><td>API key</td></tr>
+      </tbody></table></div>
+  </section>
+
+  <section id="quickstart" aria-labelledby="quickstart-h">
+    <h2 id="quickstart-h">Quickstart</h2>
+    <p class="sub">Requires <strong>Go 1.27.1+</strong>. The local demo uses the <code>demo</code> provider with auth disabled: evaluation only.</p>
+    <div class="code"><button class="copy" type="button" aria-label="Copy the demo commands">Copy</button>
+<pre><code>git clone https://github.com/zyvorai/zyvor-kryton.git &amp;&amp; cd zyvor-kryton
+make demo   # http://localhost:8080</code></pre></div>
+    <p class="sub">Drive it from the CLI:</p>
+    <div class="code"><button class="copy" type="button" aria-label="Copy the krytonctl commands">Copy</button>
+<pre><code>go run ./cmd/krytonctl list
+go run ./cmd/krytonctl create win-dev-01
+go run ./cmd/krytonctl doctor</code></pre></div>
+    <p class="sub">Install the binaries:</p>
+    <div class="code"><button class="copy" type="button" aria-label="Copy the install commands">Copy</button>
+<pre><code>make build
+sudo install -m755 bin/krytond bin/krytonctl /usr/local/bin/</code></pre></div>
+    <p class="sub">Deploy to a KVM host over SSH and create a Linux VM on libvirt:</p>
+    <div class="code"><button class="copy" type="button" aria-label="Copy the libvirt commands">Copy</button>
+<pre><code>./scripts/deploy-remote.sh &lt;host&gt; &lt;user&gt; --key --apikey --provider libvirt
+bin/kryton-image fetch --image ubuntu-24.04 --dir /var/lib/kryton/images --sha256 &quot;$APPROVED_SHA256&quot;
+krytonctl create --image ubuntu-24.04 --cpu 2 --memory 2048 --disk 20 --ssh-key ~/.ssh/id_ed25519.pub linux-dev</code></pre></div>
+    <p class="sub">Next: the <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/USER-GUIDE.md">user guide</a>, <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/KUBEVIRT.md">KubeVirt</a>, <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/DOCKUR.md">dockur</a>, <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/AUTH.md">authentication</a>.</p>
+  </section>
+
+  <section id="license" aria-labelledby="license-h">
+    <h2 id="license-h">License</h2>
+    <p class="sub">Kryton is free and open source under the <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/LICENSE">Apache License 2.0</a> (see <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/NOTICE">NOTICE</a>). Report vulnerabilities per <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/SECURITY.md">SECURITY.md</a>; contributions are welcome, see <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
+  </section>
+
+  <section id="support" aria-labelledby="support-h">
+    <div class="support">
+      <h2 id="support-h">Support the project</h2>
+      <p class="sub">Free under Apache-2.0. If it helps you, you can donate any amount you like: <a href="https://rzp.io/rzp/utwdYh3" rel="noopener">https://rzp.io/rzp/utwdYh3</a>. A donation is voluntary and supports development and maintenance. It is not a purchase: it buys no support, SLA, features, priority or license, and it is not tax-deductible (Zyvor AI Labs Private Limited is a company, not a charity). Zyvor Enterprise (supported releases, SLAs, a named contact and enterprise features) is separate: <a href="mailto:sales@zyvor.dev">sales@zyvor.dev</a>.</p>
+      <p class="cta"><a class="btn primary" href="https://rzp.io/rzp/utwdYh3" rel="noopener">Donate any amount</a></p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p><b>Kryton</b> · © 2026 Zyvor AI Labs Private Limited · <a href="https://zyvor.dev">zyvor.dev</a> · Apache-2.0 · <a href="#support">Support</a></p>
+  <p><a href="https://github.com/zyvorai/zyvor-kryton">GitHub</a> · <a href="docs/">Docs</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/USER-GUIDE.md">User guide</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/API.md">API</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/SECURITY.md">Security</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/CHANGELOG.md">Changelog</a></p>
+</footer>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="site.js"></script>
+</body>
+</html>

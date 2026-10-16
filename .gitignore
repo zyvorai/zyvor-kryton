@@ -25,5 +25,6 @@ package-lock.json
 
 # MkDocs
 .venv-docs/
-/site/
+/_docs-build/
+/_pages/
 __pycache__/

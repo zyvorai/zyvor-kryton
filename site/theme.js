@@ -1,0 +1,13 @@
+// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+// SPDX-License-Identifier: Apache-2.0
+// Runs in <head>, before first paint: stored choice, else the OS preference.
+(function () {
+  var KEY = "kryton-site-theme", root = document.documentElement, stored = null;
+  try { stored = localStorage.getItem(KEY); } catch (e) { /* private mode */ }
+  var dark = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
+  var theme = stored === "light" || stored === "dark" ? stored : dark ? "dark" : "light";
+  root.setAttribute("data-theme", theme);
+  var m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute("content", theme === "dark" ? "#0b0c10" : "#ffffff");
+  window.__siteTheme = { key: KEY };
+})();
