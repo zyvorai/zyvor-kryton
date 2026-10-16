@@ -1,0 +1,51 @@
+# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+# SPDX-License-Identifier: Apache-2.0
+
+# Deploys the landing page (site/) at / and the MkDocs documentation at /docs/.
+# Requires GitHub Pages with Source = "GitHub Actions" (repo Settings > Pages).
+name: Deploy site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Install MkDocs
+        run: pip install -r requirements-docs.txt
+      - name: Build documentation under /docs
+        run: mkdocs build --strict -d _pages/docs
+      - name: Add the landing page at /
+        run: cp -R site/. _pages/
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _pages
+      - id: deployment
+        uses: actions/deploy-pages@v5
