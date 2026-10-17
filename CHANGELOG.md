@@ -6,6 +6,8 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-17
+
 ### Added
 
 - Signed, 10-minute console tickets (`POST /api/v1/machines/{id}/console-ticket`) so browser consoles work with API-key auth; the dashboard renews them automatically.
@@ -16,10 +18,17 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - Tests for all Linux and Windows template profiles, real disk/seed provisioning, libvirt XML validation, and Linux template CI.
 - Operator console rebuilt in React + Vite (`web/`) with the netra apple.com design system: light/dark themes, glass nav, metric band, sheet-based create flow, machine drawer with SSH hints; CI typechecks, tests and checks the embedded bundle is current.
 - `deploy-remote.sh --provider` (libvirt preflight and storage setup) and `kryton-image` installation; `KRYTON_E2E_IMAGES` for the boot gate.
+- `deploy-remote.sh --apikey` enables lab API-key auth in one step.
+- Golden-image capture is gated on guestkit boot-readiness, and the guestkit Cutover Passport is surfaced via the API and the Images UI.
+- Console login screen restyled (Apple Store chapter layout, light Zyvor orange accent) with a Sign out action that clears the session API token.
+- Donation landing site and expanded docs (README, social cards, docs site).
 - README, docs site and social cards now present Kryton as a Windows and Linux machine control plane with four providers; new Linux operator guide section, Linux FAQ entries, libvirt in the architecture and deployment comparisons, and Linux `initialization` in the API reference.
 
 ### Fixed
 
+- Login screen flicker; the listen port stays configurable in the UI.
+- KubeVirt DataVolume clones default to `Filesystem` volumeMode.
+- Golden-image builds preserve `FINALIZE`/`IMAGE_ID` and support podman.
 - Minimum Go version raised to 1.27.1 (latest stable) to address standard-library vulnerability scan findings.
 - Libvirt: NoCloud seed on virtio-scsi so Debian cloud kernels (no AHCI) find it; guest IPs exclude loopback/link-local; image listings no longer re-hash artifacts.
 - Libvirt domains include a VGA adapter so Debian 13 no longer boot-loops after GRUB; all eleven Linux templates pass the real boot gate.
@@ -105,6 +114,7 @@ Initial public release of Kryton as a production-oriented standalone control pla
 
 The release source is Apache-2.0 licensed and contains no Windows media or activation material.
 
-[Unreleased]: https://github.com/zyvorai/kryton/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/zyvorai/kryton/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/zyvorai/kryton/releases/tag/v1.3.0
 [1.2.0]: https://github.com/zyvorai/kryton/releases/tag/v1.2.0
 [1.1.0]: https://github.com/zyvorai/kryton/releases/tag/v1.1.0

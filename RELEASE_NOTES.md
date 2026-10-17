@@ -2,7 +2,7 @@
 
 Narrative release write-ups. For the flat, Keep-a-Changelog-style version index, see [CHANGELOG.md](CHANGELOG.md).
 
-## Unreleased
+## 1.3.0
 
 Kryton now runs Linux machines as well as Windows, behind the same API.
 
@@ -23,6 +23,13 @@ Kryton now runs Linux machines as well as Windows, behind the same API.
 
 - Go 1.27.1 minimum, all dependencies upgraded; CI runs gofmt, vet, race tests, golangci-lint, govulncheck and gosec on every change.
 - The console proxy HTML-escapes the machine ID and strips credentials before forwarding to the backend.
+
+### Also in this release
+
+- `deploy-remote.sh --apikey` turns on lab API-key auth in one step; the login screen is restyled and gains Sign out.
+- Golden-image capture is gated on guestkit boot-readiness and its Cutover Passport is shown in the Images UI.
+- KubeVirt DataVolume clones default to Filesystem volumeMode.
+- Routine Dependabot bumps (Actions, Docker base image, Go modules).
 
 ### Known limitation
 
