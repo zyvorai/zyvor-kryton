@@ -6,6 +6,7 @@ package settings
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -30,5 +31,31 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	b, err := os.ReadFile(path)
 	if err != nil || len(b) == 0 {
 		t.Fatalf("file missing: %v", err)
+	}
+}
+
+func TestSaveConcurrent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	s, err := NewStore(path, Runtime{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := s.Save(Runtime{DefaultProject: "p"}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	s2, err := NewStore(path, Runtime{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s2.Get().DefaultProject != "p" {
+		t.Fatalf("got %+v", s2.Get())
 	}
 }

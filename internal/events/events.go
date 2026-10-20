@@ -99,14 +99,15 @@ func (b *Bus) Publish(ctx context.Context, eventType, subject string, data map[s
 		default:
 		}
 	}
+	webhook := b.webhook
 	b.mu.Unlock()
 	if b.store != nil {
 		if err := b.store.append(e); err != nil && b.log != nil {
 			b.log.Warn("event persist failed", "error", err)
 		}
 	}
-	if b.webhook != "" {
-		b.deliverWebhook(ctx, e)
+	if webhook != "" {
+		b.deliverWebhook(ctx, webhook, e)
 	}
 	return e
 }
@@ -152,14 +153,14 @@ func (b *Bus) Subscribe() (<-chan Event, func()) {
 	return ch, cancel
 }
 
-func (b *Bus) deliverWebhook(parent context.Context, e Event) {
+func (b *Bus) deliverWebhook(parent context.Context, webhook string, e Event) {
 	body, err := json.Marshal(e)
 	if err != nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.webhook, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook, bytes.NewReader(body))
 	if err != nil {
 		return
 	}
@@ -171,11 +172,13 @@ func (b *Bus) deliverWebhook(parent context.Context, e Event) {
 	}
 	res, err := b.http.Do(req)
 	if err != nil {
-		b.log.Warn("event webhook failed", "error", err)
+		if b.log != nil {
+			b.log.Warn("event webhook failed", "error", err)
+		}
 		return
 	}
 	defer func() { _ = res.Body.Close() }()
-	if res.StatusCode >= 300 {
+	if res.StatusCode >= 300 && b.log != nil {
 		b.log.Warn("event webhook returned error", "status", res.StatusCode)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -253,5 +254,18 @@ func TestGoldenListReflectsManagerState(t *testing.T) {
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || len(resp.Items) != 1 || resp.Items[0].ID != "b1" {
 		t.Fatalf("expected build b1 listed, got %+v err=%v", resp, err)
+	}
+}
+
+func TestGoldenStartMalformedBodyReturns400(t *testing.T) {
+	g, err := golden.New(golden.Config{BaseDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("golden.New: %v", err)
+	}
+	h := testServerWithGolden(t, g)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/golden", strings.NewReader("{not json")))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }

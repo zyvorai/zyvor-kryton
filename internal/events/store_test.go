@@ -28,3 +28,21 @@ func TestFileStoreRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected events: %#v", items)
 	}
 }
+
+func TestPublishSetWebhookURLConcurrent(t *testing.T) {
+	bus, err := New(10, "", "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			bus.SetWebhookURL("")
+		}
+	}()
+	for i := 0; i < 200; i++ {
+		bus.Publish(context.Background(), "io.kryton.test", "x", nil)
+	}
+	<-done
+}
