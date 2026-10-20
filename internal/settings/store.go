@@ -76,9 +76,9 @@ func (s *Store) Get() Runtime {
 func (s *Store) Save(cfg Runtime) error {
 	cfg = trimRuntime(cfg)
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.cfg = cfg
 	path := s.path
-	s.mu.Unlock()
 	if path == "" {
 		return nil
 	}

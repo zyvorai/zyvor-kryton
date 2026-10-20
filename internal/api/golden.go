@@ -85,6 +85,7 @@ func (s *Server) goldenStart(w http.ResponseWriter, r *http.Request) {
 	}
 	var req model.GoldenStartRequest
 	if err := decodeJSON(w, r, &req); err != nil {
+		s.badRequest(w, r, err.Error())
 		return
 	}
 	if img, ok := s.catalog.Get(req.ImageID); ok && img.OS == "linux" {

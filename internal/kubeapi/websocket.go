@@ -59,9 +59,11 @@ func (c *Client) ProxyVNC(w http.ResponseWriter, r *http.Request, namespace, vmi
 		for {
 			mt, msg, err := src.ReadMessage()
 			if err != nil {
-				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) && !isNetClosed(err) {
-					errCh <- err
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) || isNetClosed(err) {
+					err = nil
 				}
+				// Always signal so ProxyVNC returns and closes both sides.
+				errCh <- err
 				return
 			}
 			if err := dst.WriteMessage(mt, msg); err != nil {
