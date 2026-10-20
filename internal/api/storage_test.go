@@ -106,3 +106,22 @@ func TestPostStorageSetupForbiddenForViewerRole(t *testing.T) {
 		t.Fatalf("expected 403 for viewer, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestPostStorageSetupWipeDeviceRequiresAdmin(t *testing.T) {
+	h, _, adminToken, operatorToken := testServerAPIKeyRoles3(t)
+	post := func(tok string) int {
+		body := bytes.NewBufferString(`{"backend":"rook-ceph","rookMode":"device","device":"/dev/sdb1","wipeDevice":true}`)
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/storage/setup", body)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	if got := post(operatorToken); got != http.StatusForbidden {
+		t.Fatalf("operator wipeDevice: want 403, got %d", got)
+	}
+	// Admin passes the role gate; the demo provider then answers 501.
+	if got := post(adminToken); got != http.StatusNotImplemented {
+		t.Fatalf("admin wipeDevice: want 501 (past role gate), got %d", got)
+	}
+}

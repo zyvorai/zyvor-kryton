@@ -90,11 +90,18 @@ func testServerMultiProject(t *testing.T) (http.Handler, *events.Bus) {
 // can be exercised for both the allowed and forbidden case.
 func testServerAPIKeyRoles(t *testing.T) (h http.Handler, viewerToken, adminToken string) {
 	t.Helper()
-	viewerToken, adminToken = "viewer-token", "admin-token"
+	h, viewerToken, adminToken, _ = testServerAPIKeyRoles3(t)
+	return h, viewerToken, adminToken
+}
+
+func testServerAPIKeyRoles3(t *testing.T) (h http.Handler, viewerToken, adminToken, operatorToken string) {
+	t.Helper()
+	viewerToken, adminToken, operatorToken = "viewer-token", "admin-token", "operator-token"
 	keys := fmt.Sprintf(`{"keys":[
 		{"name":"viewer","sha256":%q,"role":"viewer","projects":["default"]},
-		{"name":"admin","sha256":%q,"role":"admin","projects":["default"]}
-	]}`, auth.HashToken(viewerToken), auth.HashToken(adminToken))
+		{"name":"admin","sha256":%q,"role":"admin","projects":["default"]},
+		{"name":"operator","sha256":%q,"role":"operator","projects":["default"]}
+	]}`, auth.HashToken(viewerToken), auth.HashToken(adminToken), auth.HashToken(operatorToken))
 	dir := t.TempDir()
 	path := filepath.Join(dir, "keys.json")
 	if err := os.WriteFile(path, []byte(keys), 0o600); err != nil {
@@ -119,7 +126,7 @@ func testServerAPIKeyRoles(t *testing.T) (h http.Handler, viewerToken, adminToke
 		Provider: demo.New(), Catalog: cat, Events: bus, Auth: a, Metrics: metrics.New(), Web: web,
 		Projects: []string{"default"}, DefaultProject: "default", AuthMode: "apikey", Log: log,
 	})
-	return s.Handler(), viewerToken, adminToken
+	return s.Handler(), viewerToken, adminToken, operatorToken
 }
 
 func TestGetSettingsReturnsView(t *testing.T) {
