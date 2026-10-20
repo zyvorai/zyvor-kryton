@@ -129,17 +129,22 @@ func (s *Server) postStorageSetup(w http.ResponseWriter, r *http.Request) {
 		s.forbidden(w, r)
 		return
 	}
+	var req storage.SetupRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		s.badRequest(w, r, err.Error())
+		return
+	}
+	// Wiping a block device is destructive and irreversible: admin only.
+	if req.WipeDevice && p.Role != auth.Admin {
+		s.forbidden(w, r)
+		return
+	}
 	if s.p.Name() != "kubevirt" {
 		s.writeAPIError(w, r, http.StatusNotImplemented, "UNSUPPORTED", "storage setup requires the kubevirt provider")
 		return
 	}
 	if s.storageSetup == nil || !s.storageSetup.Available() {
 		s.badRequest(w, r, "storage setup scripts are not available on this host (run krytond on the cluster node with scripts/)")
-		return
-	}
-	var req storage.SetupRequest
-	if err := decodeJSON(w, r, &req); err != nil {
-		s.badRequest(w, r, err.Error())
 		return
 	}
 	if !req.SetDefault {
