@@ -129,6 +129,8 @@ krytonctl create \
 
 **UI:** Machines → **Create** → pick image → expand **Dockur options** → submit.
 
+> **Passwords.** If you omit the password, Kryton generates a 20-character one and returns it **once** as `generatedPassword` in the create response. There is no default `admin` password. RDP and the web viewer listen on `127.0.0.1` unless you create the machine with `publicBind` (CLI: `--dockur-public-bind`); tunnel with `ssh -L` otherwise.
+
 **API:**
 
 ```bash
@@ -141,7 +143,7 @@ curl -s -X POST "$KRYTON_URL/api/v1/machines" \
     "image": "windows-11-enterprise",
     "compute": {"cpu": 4, "memoryMiB": 8192},
     "disk": {"sizeGiB": 80},
-    "dockur": {"username": "admin", "password": "ChangeMe!", "audio": true}
+    "dockur": {"username": "admin", "password": "<choose-a-strong-password>", "audio": true}
   }'
 ```
 
@@ -179,6 +181,27 @@ Full dockur option matrix: [DOCKUR.md](DOCKUR.md).
 | `windows-server-2016` | Server 2016 |
 
 ---
+
+
+### Unattended builds and tests (shared folder, jobs, readiness)
+
+For CI-style work on a Windows guest, create the machine with the job agent:
+
+```bash
+krytonctl create --image windows-11-enterprise --cpu 4 --memory 8192 --disk 64 \
+  --dockur-job-agent lab-ci-win           # implies --dockur-shared; prints generatedPassword once
+krytonctl ready <id> --wait --timeout 3600   # exits 0 only when the container is up, RDP answers and the agent is alive
+krytonctl shared-put <id> ./build.ps1 build.ps1
+krytonctl job-run <id> --shell powershell --timeout 1800 --wait --file build.ps1
+krytonctl job-logs <id> <job-id>             # then job-artifacts / job-artifact to download results
+krytonctl restart <id>                       # graceful (ACPI) restart; waits until RDP answers again
+```
+
+Jobs run through the shared folder (`Z:` / the desktop **Shared** folder in the guest), so job state survives a `krytond` restart. Every file the guest writes is treated as untrusted. Details, limits and the HTTP API are in [DOCKUR.md](DOCKUR.md). The job agent has been tested against a simulated guest; run it once on a real lab VM before depending on it.
+
+### Day-two operations
+
+Metrics, the audit log, webhooks, scheduled power actions, TTLs, quotas and per-project key roles are described in [OBSERVABILITY.md](OBSERVABILITY.md) and [AUTH.md](AUTH.md). `/metrics` now needs a token when API auth is on (`KRYTON_METRICS_TOKEN` or any valid key).
 
 ## 2b. Linux operator (libvirt)
 

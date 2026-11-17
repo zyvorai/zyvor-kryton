@@ -4,7 +4,7 @@ All notable changes to Kryton are documented here, in [Keep a Changelog](https:/
 
 For narrative release write-ups (what changed and why, aimed at operators), see [RELEASE_NOTES.md](RELEASE_NOTES.md). This file is the flat, version-by-version index; RELEASE_NOTES.md is the prose companion — keep both in sync when cutting a release.
 
-## [Unreleased]
+## [1.4.0] - 2026-11-17
 
 ### Changed
 
@@ -38,6 +38,10 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - Per-project quotas on machines, vCPU, memory and disk (`/api/v1/quotas…`, `KRYTON_QUOTA_MAX_*`, `KRYTON_QUOTAS_FILE`), enforced at create with `QUOTA_EXCEEDED`: 409 when current usage is the obstacle, 403 when a single machine can never fit. `krytonctl quota`.
 - Per-project API-key roles: `grants` in `keys.json` (and `X-Kryton-Grants` in proxy mode) give viewer/operator/admin per project; `krytonctl new-key` generates an entry.
 - New docs: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md); AUTH, API, DEPLOYMENT, GA and ARCHITECTURE updated; OpenAPI extended (all three copies in sync).
+
+### Fixed
+
+- `scripts/deploy-remote.sh` no longer fails with `port: unbound variable` on macOS bash 3.2 when `--port` is omitted: the remote port probe now runs from a temp file instead of a heredoc inside `$( … )`.
 
 ## [1.3.0] - 2026-10-17
 

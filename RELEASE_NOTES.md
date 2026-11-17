@@ -2,6 +2,33 @@
 
 Narrative release write-ups. For the flat, Keep-a-Changelog-style version index, see [CHANGELOG.md](CHANGELOG.md).
 
+## 1.4.0
+
+Kryton is now operable day to day, and its Windows (dockur) provider can run unattended build and test jobs.
+
+### Operations and observability
+
+- **Metrics** at `/metrics`: machines by project, provider and state, provider health, request counts and latency histograms, rate-limit rejections, quota usage, webhook and scheduler counters. **Behaviour change:** when API auth is on, `/metrics` is no longer anonymous. Use `KRYTON_METRICS_TOKEN` or any valid API key, or set `KRYTON_METRICS_PUBLIC=true`. Existing scrapers need a token. The Helm chart gains `metrics.tokenSecret`.
+- **Audit log** (`GET /api/v1/audit`): one entry per mutating call (including denied and rate-limited ones) plus scheduler and TTL actions; optional JSONL file with rotation.
+- **Webhooks**: per-project, HMAC-signed, retried with backoff, with a delivery log, dead-letter list and redelivery. SSRF-guarded (https only, no private ranges unless allowlisted).
+- **Schedules and TTL**: cron power actions (start, stop, restart, snapshot) in an IANA time zone, per-machine TTL with an expiry warning event, and an optional default TTL.
+- **Quotas** per project (machines, vCPU, memory, disk) and **per-project roles** on API keys (`krytonctl new-key`).
+
+### Windows (dockur) workflows
+
+- Host-managed **shared folder** and **OEM script**, guest **jobs** with logs and artifacts, a real **readiness probe**, graceful **restart**, and install progress.
+- **Safer defaults**: no default `admin` password (a strong one is generated and returned once), RDP and console bound to loopback unless `publicBind`, port-conflict errors, and `sharedDir` / `oemDir` restricted to a name under the machine directory (**breaking**: absolute host paths now return 400).
+- Catalog additions and clearer labels (Windows 11 25H2, Tiny10, Server 2012; ARM images rejected).
+
+### Maintenance
+
+- Go 1.27.4 build image (fixes GO-2026-6859), refreshed distroless digest, golangci-lint 2.15.0, gosec 2.30.0, React 19.3.1 and Vite 8.3.8.
+- `deploy-remote.sh` works on macOS bash 3.2 without `--port`.
+
+### Known limitations
+
+- The PowerShell job agent has only been tested against a simulated guest. Schedules, webhook state and quotas are single-replica JSON state (use a persistent volume in Helm). The web console create form still labels the legacy host-folder fields and needs a rebuild of the embedded bundle.
+
 ## 1.3.0
 
 Kryton now runs Linux machines as well as Windows, behind the same API.

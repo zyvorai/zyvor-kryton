@@ -229,7 +229,10 @@ resolve_listen_port() {
         return 0
     fi
     local existing=""
-    existing="$(_ssh_once 'bash -s' <<'PROBE' 2>/dev/null || true
+    # The probe lives in a temp file, not a heredoc inside $( ... ): bash 3.2 (macOS) mis-parses the
+    # `case ... )` patterns there and expands $port locally under `set -u`.
+    local probe_file; probe_file="$(mktemp)"
+    cat >"$probe_file" <<'PROBE'
 unit=/etc/systemd/system/kryton.service
 envf=/etc/kryton/env
 for f in "$envf" "$unit"; do
@@ -251,7 +254,8 @@ for f in "$envf" "$unit"; do
   esac
 done
 PROBE
-)" || true
+    existing="$(_ssh_once 'bash -s' <"$probe_file" 2>/dev/null || true)"
+    rm -f "$probe_file"
     existing="$(printf '%s' "$existing" | tr -d '[:space:]')"
     case "${existing}" in
         ''|*[!0-9]*|0) info "Listen port ${KRYTON_PORT} (default)" ;;
