@@ -272,6 +272,22 @@ Timeouts are enforced twice: by the agent (kills the process tree) and by Kryton
 
 ---
 
+## Operating notes from a real Windows lab
+
+Observed while running a Windows 11 guest end to end on a shared Linux host:
+
+- **`ready` means RDP answers, not "the desktop is usable".** Windows can accept the RDP handshake while it is still at the first-sign-in preparation screen ("This might take a few minutes"). For
+  scripted work, wait for the job agent heartbeat (`agentPresent`) or poll a flag your script writes into the shared folder.
+- **The first-boot (OEM) script runs once, when the install finishes.** It is read from `/oem` at that moment, so swapping `install.bat` afterwards does nothing; create the machine with the
+  script you want. Anything long-running there (toolchain installs) shares a disk with Windows setup.
+- **Storage speed decides everything.** Install time is dominated by disk writes. On a host where other workloads keep disk I/O wait at 25–30%, a Windows 11 install took several hours and
+  installing Rust inside the guest ran at hundreds of bytes per second. Prefer a dedicated or SSD-backed data directory, and do heavy builds elsewhere (cross-compile instead).
+- **A black web viewer is usually a sleeping display.** Move the mouse or press a key in the viewer; the sign-in screen and autologin follow. After a restart the desktop can take a few minutes.
+- **Install progress is a heuristic.** The percentage comes from container log lines and stays low while Windows setup runs inside the guest; trust the guest screen for the real stage.
+- **Deleting a machine removes its container and its data** (`DELETE /api/v1/machines/{id}`), including the shared folder, so copy artifacts out first.
+- **Compose is required.** The provider shells out to `docker compose`; install the Compose plugin (`docker-compose-v2` on Ubuntu) on the lab host. With rootless Podman and no compose provider the create call fails.
+- **Do not enable `KRYTON_LAB_AUTO_AUTH` on a host with a public address.** It hands the API key to any unauthenticated visitor of the console; use API-key sign-in there.
+
 ## Events
 
 Dockur provisioning emits `io.kryton.machine.install.started` when unattended setup begins, in addition to the standard create/start/stop/delete events.

@@ -11,6 +11,10 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - Web console: the dockur create form drops the legacy host-folder fields (`sharedDir` / `oemDir`, which now return 400 for host paths) and offers `shared`, `oemScript` (paste or load an `install.bat`), `jobAgent`, `publicBind` (off by default, with a warning) and optional `rdpPort` / `consolePort`. The password is optional; when left empty the generated password is shown once in a copy-once dialog. The old `admin` default in the form is gone.
 - Web console, machine detail (dockur): readiness and install progress from `GET /ready` (polled while installing), a Restart button (graceful, with a force option), a Jobs panel (list, submit with `cmd` or `powershell` and a timeout, logs, cancel) and a Shared folder panel (browse, upload, download, delete). Mutating controls are hidden for viewer keys. Embedded bundle rebuilt.
 
+### Docs
+
+- `docs/DOCKUR.md`: new "Operating notes from a real Windows lab" (what `ready` means, first-boot script timing, storage speed, blank viewer, deleting machines, Compose requirement, lab auto-auth on public hosts).
+
 ## [1.4.0] - 2026-11-17
 
 ### Changed
