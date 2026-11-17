@@ -6,6 +6,15 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+### Changed
+
+- Build image: `golang` 1.27.3 -> 1.27.4 (digest re-resolved from Docker Hub). Fixes GO-2026-6859 (net/http MaxBytesReader header race), which govulncheck flagged as reachable on Go 1.27.2.
+- Runtime image: `gcr.io/distroless/static-debian13:nonroot` digest re-resolved to the current tag digest (`aafe9936...`); still pinned by `@sha256`.
+- CI: govulncheck now scans with Go 1.27.4 (was 1.27.1); golangci-lint v2.14.0 -> v2.15.0 (linter bumps only; 0 new findings); gosec v2.29.0 -> v2.30.0 (rule fixes and G125; 0 findings).
+- Operator console deps (`web/`): react and react-dom 19.3.0 -> 19.3.1 (RSC transport only, no client behaviour change); vite 8.3.2 -> 8.3.8 (patch fixes). Embedded bundle in `cmd/krytond/web` rebuilt.
+- Unchanged because already current: gorilla/websocket v1.5.3, golang.org/x/time v0.16.0, every GitHub Action major, mkdocs 1.6.1 / mkdocs-material 9.8.1 (ranges unchanged; docs build verified). The `go` directive stays at 1.27.1 (documented minimum).
+- Not bumped: vitest 5.0.3 -> 5.1.0 and @vitejs/plugin-react 6.1.1 -> 6.3.0 (minor releases, left for dependabot/a separate change); vendored noVNC stays at 1.5.0 (1.7.0 exists, but `web/public/novnc-rfb.js` is a bundled build and needs a reviewed rebuild; MPL-2.0 license file unchanged).
+
 ## [1.3.0] - 2026-10-17
 
 ### Added
