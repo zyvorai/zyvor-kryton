@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { api } from '../api';
 import { useApp } from '../state';
-import { applyImageMinimums, buildCreateBody, validateCreate, type CreateForm } from '../lib/create';
+import { applyImageMinimums, buildCreateBody, OEM_SCRIPT_MAX, validateCreate, type CreateForm } from '../lib/create';
 import { defaultImageId, pickableImages } from '../lib/images';
 import Overlay from '../components/Overlay';
 import { ImageOption } from '../components/ImageCard';
@@ -36,7 +36,7 @@ export default function CreateMachine() {
         network: '',
         linuxUsername: '',
         linuxSSHKeys: '',
-        dockur: { username: 'Docker', password: 'admin' },
+        dockur: { username: 'Docker', password: '' },
       },
       initialImg,
     ),
@@ -53,6 +53,12 @@ export default function CreateMachine() {
     if (error) setError('');
   };
   const setDockur = (k: string, v: string | boolean) => setForm((f) => ({ ...f, dockur: { ...f.dockur, [k]: v } }));
+  const loadScript = async (file?: File) => {
+    if (!file) return;
+    if (file.size > OEM_SCRIPT_MAX) return setError('The install script is larger than 64 KiB.');
+    setDockur('oemScript', await file.text());
+    if (error) setError('');
+  };
   const selectImage = (id: string) => {
     const next = items.find((i) => i.id === id);
     if (next && !next.ready && anyReady) return;
@@ -71,6 +77,15 @@ export default function CreateMachine() {
       const m = await api<Machine>('/api/v1/machines', { method: 'POST', body: JSON.stringify(buildCreateBody(form, img, provider)) });
       app.toast(`${m.spec.name} is being provisioned`);
       app.closeCreate();
+      if (m.generatedPassword) {
+        // Shown once: the API never returns it again. Not awaited, so navigation continues behind the dialog.
+        void app.confirm({
+          title: `Save the password for ${m.spec.name}`,
+          message: `No password was set, so Kryton generated one for ${m.spec.dockur?.username || m.rdpUsername || 'Docker'}.`,
+          secret: { label: 'Generated password', value: m.generatedPassword },
+          confirmLabel: 'I have saved it',
+        });
+      }
       if (form.project !== app.project) app.setProject(form.project);
       else await app.refreshProject();
       await app.loadJobs();
@@ -236,7 +251,7 @@ export default function CreateMachine() {
           <details className="create-section create-advanced">
             <summary>
               <h3>dockur options</h3>
-              <span className="muted">Defaults: user Docker / password admin</span>
+              <span className="muted">Password is generated if left empty</span>
             </summary>
             <div className="form-grid">
               {(
@@ -258,7 +273,19 @@ export default function CreateMachine() {
               ))}
               <label className="field">
                 <span>Password</span>
-                <input className="input-field" name="dockur-password" type="password" value={form.dockur.password || ''} autoComplete="new-password" onChange={(e) => setDockur('password', e.target.value)} />
+                <input
+                  className="input-field"
+                  name="dockur-password"
+                  type="password"
+                  value={form.dockur.password || ''}
+                  autoComplete="new-password"
+                  aria-describedby="dockur-password-help"
+                  placeholder="Generated"
+                  onChange={(e) => setDockur('password', e.target.value)}
+                />
+                <span id="dockur-password-help" className="muted">
+                  Optional. Leave empty and Kryton generates a strong one and shows it once after create.
+                </span>
               </label>
               <label className="field">
                 <span>Extra disks (GiB)</span>
@@ -267,8 +294,6 @@ export default function CreateMachine() {
               {(
                 [
                   ['productKey', 'Product key'],
-                  ['sharedDir', 'Shared host folder'],
-                  ['oemDir', 'OEM folder'],
                   ['command', 'Post-install command'],
                   ['customIso', 'Custom ISO URL or path'],
                 ] as const
@@ -278,6 +303,46 @@ export default function CreateMachine() {
                   <input className="input-field" name={`dockur-${k}`} value={String(form.dockur[k] || '')} onChange={(e) => setDockur(k, e.target.value)} />
                 </label>
               ))}
+              <label className="field">
+                <span>
+                  RDP port <em>optional</em>
+                </span>
+                <input className="input-field" name="dockur-rdpPort" inputMode="numeric" value={form.dockur.rdpPort || ''} placeholder="Automatic" onChange={(e) => setDockur('rdpPort', e.target.value)} />
+              </label>
+              <label className="field">
+                <span>
+                  Console port <em>optional</em>
+                </span>
+                <input className="input-field" name="dockur-consolePort" inputMode="numeric" value={form.dockur.consolePort || ''} placeholder="Automatic" onChange={(e) => setDockur('consolePort', e.target.value)} />
+              </label>
+              <label className="field wide">
+                <span>
+                  Install script <em>install.bat, runs once at first boot</em>
+                </span>
+                <textarea
+                  className="input-field"
+                  name="dockur-oemScript"
+                  rows={4}
+                  value={form.dockur.oemScript || ''}
+                  placeholder={'@echo off\r\nREM runs as the last step of the first install'}
+                  onChange={(e) => setDockur('oemScript', e.target.value)}
+                />
+                <input type="file" name="dockur-oemScriptFile" accept=".bat,.cmd,.txt" aria-label="Load the install script from a file" onChange={(e) => loadScript(e.target.files?.[0])} />
+              </label>
+              <label className="wide">
+                <input type="checkbox" name="dockur-shared" checked={!!form.dockur.shared || !!form.dockur.jobAgent} disabled={!!form.dockur.jobAgent} onChange={(e) => setDockur('shared', e.target.checked)} /> Shared folder (host-managed, drive Z: in the guest)
+              </label>
+              <label className="wide">
+                <input type="checkbox" name="dockur-jobAgent" checked={!!form.dockur.jobAgent} onChange={(e) => setDockur('jobAgent', e.target.checked)} /> Job agent: run commands in the guest from Kryton (includes the shared folder)
+              </label>
+              <label className="wide">
+                <input type="checkbox" name="dockur-publicBind" checked={!!form.dockur.publicBind} aria-describedby="publicbind-warn" onChange={(e) => setDockur('publicBind', e.target.checked)} /> Expose on all network interfaces
+              </label>
+              {form.dockur.publicBind && (
+                <p id="publicbind-warn" className="hint-warn inline wide" role="note">
+                  This publishes RDP and the web viewer on 0.0.0.0, so anyone who can reach the host can try to sign in. Leave it off to keep them on the host's loopback.
+                </p>
+              )}
               <label className="wide">
                 <input type="checkbox" checked={!!form.dockur.audio} onChange={(e) => setDockur('audio', e.target.checked)} /> Web viewer audio
               </label>

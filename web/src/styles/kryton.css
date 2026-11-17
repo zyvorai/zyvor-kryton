@@ -425,3 +425,28 @@
   .choice-row { grid-template-columns: auto minmax(0, 1fr); }
   .choice-chips { grid-column: 2; justify-content: flex-start; }
 }
+
+/* dockur guest management: readiness, jobs, shared folder, one-time secret */
+.secret-box { margin-top: 4px; }
+.secret-row { display: flex; gap: 8px; }
+.secret-row .input-field { flex: 1; min-width: 0; font-family: var(--font-mono, ui-monospace, monospace); letter-spacing: 0.02em; }
+.check-row { display: flex; align-items: flex-start; gap: 8px; margin: 8px 0 0; font-size: 14px; color: var(--text-secondary); }
+.check-row input { margin-top: 3px; }
+.hint-warn.inline { margin: 4px 0 0; }
+.ready-bar .detail-progress { margin-top: 6px; }
+.ready-bar .ready-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+.ready-bar .ready-detail { margin: 4px 0 0; font-size: 12px; color: var(--text-tertiary); overflow-wrap: anywhere; }
+.guest-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.guest-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--hairline-1); }
+.guest-list li > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.guest-list li strong { overflow-wrap: anywhere; font-weight: 500; }
+.guest-list li span.sub { font-size: 12px; color: var(--text-tertiary); }
+.guest-form { display: grid; gap: 10px; margin: 12px 0; }
+.guest-form .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.guest-form textarea { font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; }
+.guest-log { max-height: 220px; overflow: auto; margin: 8px 0 12px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--terminal-bg); color: var(--terminal-text); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 13px; margin-bottom: 6px; }
+.upload-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 560px) { .guest-form .row { grid-template-columns: 1fr; } }
+.upload-row label:focus-within { outline: 2px solid var(--apple-blue); outline-offset: 2px; }

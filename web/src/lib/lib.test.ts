@@ -13,7 +13,10 @@ import {
   withConsoleHTML,
   withConsoleTicket,
 } from './console';
-import { applyImageMinimums, buildCreateBody, parseKeys, validateCreate, type CreateForm } from './create';
+import { applyImageMinimums, buildCreateBody, parseKeys, parsePort, validateCreate, type CreateForm } from './create';
+import {
+  buildJobBody, encodeSharedPath, fmtBytes, hasShared, isJobActive, jobTone, joinShared, parentShared, readyPollMs, readyView, validateJob, validSharedName, type JobForm,
+} from './guest';
 import { matchesFilter } from './machines';
 import type { Image, Machine } from '../types';
 
@@ -154,7 +157,7 @@ describe('create', () => {
     network: '',
     linuxUsername: '',
     linuxSSHKeys: 'ssh-ed25519 AAAA a@b\n\n  ssh-rsa BBBB c@d  ',
-    dockur: { username: 'Docker', password: 'admin', extraDisks: '32, x, 64' },
+    dockur: { username: 'Docker', password: '', extraDisks: '32, x, 64' },
   };
   it('parses keys', () => {
     expect(parseKeys(base.linuxSSHKeys)).toEqual(['ssh-ed25519 AAAA a@b', 'ssh-rsa BBBB c@d']);
@@ -180,6 +183,84 @@ describe('create', () => {
     expect(b.initialization).toBeUndefined();
     expect(b.dockur.extraDisksGiB).toEqual([32, 64]);
     expect(b.disk.storageClass).toBe('fast');
+  });
+});
+
+describe('dockur create options', () => {
+  const win = img({ id: 'w', os: 'windows', ready: true });
+  const f = (d: CreateForm['dockur']): CreateForm => ({
+    name: 'w1', project: 'default', image: 'w', cpu: 2, memory: 4096, disk: 64, storageClass: '', ttl: 0, network: '', linuxUsername: '', linuxSSHKeys: '', dockur: d,
+  });
+  const body = (d: CreateForm['dockur']) => (buildCreateBody(f(d), win, 'dockur') as Record<string, any>).dockur;
+  it('omits an empty password and the removed legacy fields', () => {
+    const d = body({ username: 'Docker', password: '' });
+    expect('password' in d).toBe(false);
+    expect('sharedDir' in d).toBe(false);
+    expect('oemDir' in d).toBe(false);
+    expect('shared' in d || 'jobAgent' in d || 'publicBind' in d || 'rdpPort' in d).toBe(false);
+  });
+  it('sends the new options', () => {
+    const d = body({ password: 'Secret1!', shared: true, oemScript: '@echo off', publicBind: true, rdpPort: '13390', consolePort: ' 18010 ' });
+    expect(d).toMatchObject({ password: 'Secret1!', shared: true, oemScript: '@echo off', publicBind: true, rdpPort: 13390, consolePort: 18010 });
+  });
+  it('jobAgent implies shared', () => {
+    expect(body({ jobAgent: true })).toMatchObject({ jobAgent: true, shared: true });
+  });
+  it('validates ports and script size', () => {
+    expect(parsePort('')).toBe(0);
+    expect(parsePort('1023')).toBeNaN();
+    expect(parsePort('65536')).toBeNaN();
+    expect(parsePort('80a')).toBeNaN();
+    expect(validateCreate(f({ rdpPort: '99' }), win)).toMatch(/RDP port/);
+    expect(validateCreate(f({ consolePort: 'x' }), win)).toMatch(/Console port/);
+    expect(validateCreate(f({ rdpPort: '2000', consolePort: '2000' }), win)).toMatch(/differ/);
+    expect(validateCreate(f({ oemScript: 'x'.repeat(65537) }), win)).toMatch(/64 KiB/);
+    expect(validateCreate(f({ rdpPort: '2000', consolePort: '2001', oemScript: 'ok' }), win)).toBeNull();
+  });
+});
+
+describe('guest helpers', () => {
+  it('maps readiness to a view', () => {
+    expect(readyView(null).label).toMatch(/Checking/);
+    const base = { machineId: 'm', ready: false, containerUp: true, rdpOpen: false, agentPresent: false, agentRequired: false };
+    expect(readyView({ ...base, install: { phase: 'downloading', percent: 20, message: 'dl' } })).toMatchObject({ percent: 20, label: 'Downloading Windows media', detail: 'dl' });
+    expect(readyView({ ...base, ready: true }).percent).toBe(100);
+    expect(readyView({ ...base, rdpOpen: true, agentRequired: true }).label).toBe('Waiting for the job agent');
+    expect(readyView({ ...base, containerUp: false }).label).toBe('Container stopped');
+    expect(readyView({ ...base, install: { phase: 'complete', percent: 100 } }).percent).toBe(99);
+  });
+  it('polls fast until ready and not when stopped', () => {
+    expect(readyPollMs('running', null)).toBe(4000);
+    expect(readyPollMs('running', { machineId: 'm', ready: true, containerUp: true, rdpOpen: true, agentPresent: true, agentRequired: false })).toBe(30000);
+    expect(readyPollMs('stopped', null)).toBe(0);
+  });
+  it('validates and builds job bodies', () => {
+    const j: JobForm = { name: ' build ', shell: 'powershell', script: 'Get-Date', timeoutSeconds: '30' };
+    expect(validateJob(j)).toBeNull();
+    expect(buildJobBody(j)).toEqual({ shell: 'powershell', script: 'Get-Date', timeoutSeconds: 30, name: 'build' });
+    expect(buildJobBody({ ...j, name: '' })).not.toHaveProperty('name');
+    expect(validateJob({ ...j, script: '  ' })).toMatch(/command/);
+    expect(validateJob({ ...j, timeoutSeconds: '0' })).toMatch(/Timeout/);
+    expect(validateJob({ ...j, timeoutSeconds: '90000' })).toMatch(/Timeout/);
+  });
+  it('knows active jobs', () => {
+    expect(isJobActive({ state: 'queued' })).toBe(true);
+    expect(isJobActive({ state: 'running' })).toBe(true);
+    expect(isJobActive({ state: 'failed' })).toBe(false);
+    expect(jobTone('timed_out')).toBe('bad');
+  });
+  it('handles shared paths', () => {
+    expect(encodeSharedPath('a b/c#d')).toBe('a%20b/c%23d');
+    expect(joinShared('', 'x.txt')).toBe('x.txt');
+    expect(joinShared('a/b', 'x.txt')).toBe('a/b/x.txt');
+    expect(parentShared('a/b')).toBe('a');
+    expect(parentShared('a')).toBe('');
+    expect(validSharedName('ok.txt')).toBe(true);
+    for (const bad of ['', '..', 'a/b', 'a\\b', 'c:x']) expect(validSharedName(bad)).toBe(false);
+    expect(fmtBytes(512)).toBe('512 B');
+    expect(fmtBytes(1536)).toBe('1.5 KiB');
+    expect(hasShared({ jobAgent: true })).toBe(true);
+    expect(hasShared({})).toBe(false);
   });
 });
 

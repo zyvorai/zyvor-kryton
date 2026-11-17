@@ -12,21 +12,54 @@ export default function ConfirmDialog() {
 }
 
 function Dialog() {
-  const { confirmReq } = useApp();
+  const { confirmReq, toast } = useApp();
   const [value, setValue] = useState('');
+  const [checked, setChecked] = useState(false);
+  const [copied, setCopied] = useState(false);
   if (!confirmReq) return null;
-  const cancel = () => confirmReq.resolve(null);
+  const secret = confirmReq.secret;
+  // A copy-once secret cannot be dismissed by Escape or a stray click.
+  const cancel = secret ? () => {} : () => confirmReq.resolve(null);
+  const copySecret = async () => {
+    try {
+      await navigator.clipboard.writeText(secret!.value);
+      setCopied(true);
+    } catch {
+      toast('Copy failed. Select the value and copy it manually.');
+    }
+  };
   return (
     <Overlay kind="dialog" label={confirmReq.title} onClose={cancel}>
       <form
         className="dialog-body"
         onSubmit={(e) => {
           e.preventDefault();
-          confirmReq.resolve(value.trim());
+          confirmReq.resolve(confirmReq.checkbox ? (checked ? 'checked' : '') : value.trim());
         }}
       >
         <h2>{confirmReq.title}</h2>
         {confirmReq.message && <p>{confirmReq.message}</p>}
+        {secret && (
+          <div className="field secret-box">
+            <span id="secret-label">{secret.label}</span>
+            <div className="secret-row">
+              <input
+                className="input-field mono"
+                readOnly
+                value={secret.value}
+                aria-labelledby="secret-label"
+                onFocus={(e) => e.currentTarget.select()}
+                data-testid="secret-value"
+              />
+              <button type="button" className="btn-secondary" onClick={copySecret} data-autofocus>
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <span className="muted" role="status">
+              This is the only time it is shown. Kryton does not return it again.
+            </span>
+          </div>
+        )}
         {confirmReq.input && (
           <label className="field">
             <span>{confirmReq.input.label}</span>
@@ -39,11 +72,22 @@ function Dialog() {
             />
           </label>
         )}
+        {confirmReq.checkbox && (
+          <label className="check-row">
+            <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} /> {confirmReq.checkbox.label}
+          </label>
+        )}
         <div className="dialog-actions">
-          <button type="button" className="btn-secondary" onClick={cancel}>
-            Cancel
-          </button>
-          <button type="submit" className={confirmReq.destructive ? 'danger' : 'primary'} data-autofocus={confirmReq.input ? undefined : true}>
+          {!secret && (
+            <button type="button" className="btn-secondary" onClick={cancel}>
+              Cancel
+            </button>
+          )}
+          <button
+            type="submit"
+            className={confirmReq.destructive ? 'danger' : 'primary'}
+            data-autofocus={confirmReq.input || secret ? undefined : true}
+          >
             {confirmReq.confirmLabel || 'Confirm'}
           </button>
         </div>

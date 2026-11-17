@@ -20,7 +20,7 @@ mkdirSync(shots, { recursive: true });
 const expectFields = [
   'dockurUsername', 'dockurPassword', 'dockurHostname', 'dockurLanguage',
   'dockurRegion', 'dockurKeyboard', 'dockurProductKey', 'dockurDomain',
-  'dockurDomainOu', 'dockurSharedDir', 'dockurOemDir', 'dockurCommand',
+  'dockurDomainOu', 'dockurOemScript', 'dockurRdpPort', 'dockurConsolePort', 'dockurShared', 'dockurJobAgent', 'dockurPublicBind', 'dockurCommand',
   'dockurCustomIso', 'dockurEdition', 'dockurExtraDisks', 'dockurAudio', 'dockurSecureBoot', 'dockurNoAutologin',
 ];
 
@@ -35,8 +35,9 @@ const fill = {
   dockurProductKey: 'AAAAA-BBBBB-CCCCC-DDDDD-EEEEE',
   dockurDomain: 'lab.example',
   dockurDomainOu: 'OU=Labs,DC=example,DC=com',
-  dockurSharedDir: '/tmp/kryton-shared',
-  dockurOemDir: '/tmp/kryton-oem',
+  dockurOemScript: '@echo off\r\necho ux',
+  dockurRdpPort: '33389',
+  dockurConsolePort: '38006',
   dockurCommand: 'echo ux-ok',
   dockurCustomIso: '',
   dockurEdition: 'core',
@@ -102,6 +103,8 @@ try {
     if (type === 'checkbox') await el.check();
     else await el.fill(value);
   }
+  await page.check('[name="dockurShared"]');
+  await page.check('[name="dockurJobAgent"]');
   await page.check('[name="dockurAudio"]');
   await page.check('[name="dockurSecureBoot"]');
   await page.check('[name="dockurNoAutologin"]');
@@ -122,7 +125,7 @@ try {
   await page.waitForTimeout(4000);
 
   const d = posted?.dockur || {};
-  const wantKeys = ['username','password','hostname','language','region','keyboard','productKey','domain','domainOu','sharedDir','oemDir','command','edition','audio','secureBoot','extraDisksGiB','autologin'];
+  const wantKeys = ['username','password','hostname','language','region','keyboard','productKey','domain','domainOu','oemScript','rdpPort','consolePort','command','edition','audio','secureBoot','extraDisksGiB','autologin'];
   for (const k of wantKeys) {
     if (d[k] !== undefined && d[k] !== '' && !(Array.isArray(d[k]) && !d[k].length)) pass(`POST dockur.${k}`, JSON.stringify(d[k]));
     else fail(`POST dockur.${k}`, `missing or empty in ${JSON.stringify(d)}`);

@@ -14,8 +14,15 @@ export type DockurOptions = {
   autologin?: boolean;
   audio?: boolean;
   secureBoot?: boolean;
+  /** Legacy (directory name under the machine dir); shown read-only, never sent by the console. */
   sharedDir?: string;
   oemDir?: string;
+  shared?: boolean;
+  oemScript?: string;
+  jobAgent?: boolean;
+  publicBind?: boolean;
+  rdpPort?: number;
+  consolePort?: number;
   command?: string;
   customIso?: string;
   edition?: string;
@@ -55,6 +62,8 @@ export type Machine = {
   createdAt: string;
   updatedAt?: string;
   expiresAt?: string;
+  /** Returned once, on create, when dockur.password was left empty. */
+  generatedPassword?: string;
 };
 
 export type Snapshot = { id: string; name: string; state: string; message?: string; createdAt: string };
@@ -210,3 +219,32 @@ export type StorageInventory = {
 };
 
 export type List<T> = { items?: T[] };
+
+export type Readiness = {
+  machineId: string;
+  ready: boolean;
+  containerUp: boolean;
+  rdpOpen: boolean;
+  agentPresent: boolean;
+  agentRequired: boolean;
+  install?: { phase?: string; percent?: number; message?: string };
+  checks?: { name: string; ok: boolean; detail?: string }[];
+};
+
+export type SharedFile = { path: string; name: string; size: number; isDir: boolean; modTime?: string };
+
+export type GuestJobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'canceled';
+
+export type GuestJob = {
+  id: string;
+  name?: string;
+  shell?: string;
+  state: GuestJobState;
+  exitCode?: number;
+  timeoutSeconds?: number;
+  message?: string;
+  submittedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  cancelRequested?: boolean;
+};

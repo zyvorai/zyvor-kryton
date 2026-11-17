@@ -122,6 +122,28 @@ export async function api<T = unknown>(path: string, opts: RequestInit = {}): Pr
   return body as T;
 }
 
+/** Authenticated fetch for non-JSON bodies (logs, downloads, uploads). Throws an ApiError on non-2xx. */
+export async function apiFetch(path: string, opts: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(opts.headers || {});
+  const t = token();
+  if (t) headers.set('Authorization', 'Bearer ' + t);
+  const res = await fetch(path, { ...opts, headers });
+  if (res.status === 401) {
+    onUnauthorized();
+    throw new ApiError(AUTH_REQUIRED, 401);
+  }
+  if (!res.ok) {
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      /* non-JSON error body */
+    }
+    throw errorMessage(res.status, body);
+  }
+  return res;
+}
+
 /** Endpoints that return a useful JSON report even on non-2xx (tests, doctor). */
 export async function apiReport<T = unknown>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const res = await fetch(path, {

@@ -27,7 +27,7 @@ Kryton is now operable day to day, and its Windows (dockur) provider can run una
 
 ### Known limitations
 
-- The PowerShell job agent has only been tested against a simulated guest. Schedules, webhook state and quotas are single-replica JSON state (use a persistent volume in Helm). The web console create form still labels the legacy host-folder fields and needs a rebuild of the embedded bundle.
+- The PowerShell job agent has only been tested against a simulated guest. Schedules, webhook state and quotas are single-replica JSON state (use a persistent volume in Helm).
 
 ## 1.3.0
 

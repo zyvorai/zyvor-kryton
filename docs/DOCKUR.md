@@ -167,7 +167,7 @@ curl -s -X POST http://localhost:8080/api/v1/machines \
   }' | jq '{id, generatedPassword}'
 ```
 
-> **Upgrade note.** Earlier versions accepted arbitrary host paths in `sharedDir` / `oemDir`. That was a way to mount any host directory into a guest from the API, so those fields now only accept a plain directory name inside the machine directory, and the web console's create form (which still labels them "host folder") will get a 400 for absolute paths. Use `shared` and `oemScript` instead.
+> **Upgrade note.** Earlier versions accepted arbitrary host paths in `sharedDir` / `oemDir`. That was a way to mount any host directory into a guest from the API, so those fields now only accept a plain directory name inside the machine directory. The web console no longer sends them; its create form offers `shared`, `oemScript`, `jobAgent`, `publicBind` and the port fields instead. Use `shared` and `oemScript` from the API too.
 
 ---
 

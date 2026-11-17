@@ -11,6 +11,8 @@ import { DefList, Progress, StatePill } from '../components/kit';
 import Overlay from '../components/Overlay';
 import JobConsole from '../components/JobConsole';
 import Icon from '../components/Icon';
+import { JobsPanel, ReadinessBar, SharedPanel } from '../components/GuestPanels';
+import { hasShared } from '../lib/guest';
 import type { Machine, Snapshot } from '../types';
 
 export default function MachineDetail() {
@@ -19,6 +21,7 @@ export default function MachineDetail() {
   const [m, setM] = useState<Machine | null>(null);
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [busy, setBusy] = useState('');
+  const [readyKey, setReadyKey] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -48,6 +51,7 @@ export default function MachineDetail() {
 
   const img = m ? app.images.find((i) => i.id === m.spec.image) : undefined;
   const linux = img?.os === 'linux';
+  const dockur = m?.provider === 'dockur';
   const job = m ? app.jobs.find((j) => j.kind === 'machine' && j.id === `machine:${m.id}`) : undefined;
   const consoleUrl = machineConsole(m || undefined, app.project);
   const consoleLinks = useTicketedConsole(m?.state === 'running' ? consoleUrl : '');
@@ -71,6 +75,19 @@ export default function MachineDetail() {
   const power = () => {
     const action = m!.state === 'running' ? 'stop' : 'start';
     return act(action, () => api(path('/' + action), { method: 'POST' }), `${m!.spec.name}: ${action} requested`);
+  };
+  const restart = async () => {
+    const res = await app.confirm({
+      title: `Restart ${m!.spec.name}?`,
+      message: 'A graceful restart asks Windows to shut down, then starts it again. It can take a few minutes.',
+      checkbox: { label: 'Force restart: kill the container instead. Unsaved guest data is lost.' },
+      confirmLabel: 'Restart',
+      destructive: false,
+    });
+    if (res === null) return;
+    const force = res === 'checked';
+    await act('restart', () => api(path('/restart'), { method: 'POST', body: JSON.stringify({ force, wait: false }) }), `${m!.spec.name}: ${force ? 'force ' : ''}restart requested`);
+    setReadyKey((k) => k + 1);
   };
   const snapshot = async () => {
     const name = await app.confirm({ title: 'Take a snapshot', input: { label: 'Snapshot name (optional)', placeholder: 'before-upgrade' }, confirmLabel: 'Snapshot' });
@@ -152,6 +169,12 @@ export default function MachineDetail() {
               {busy === 'start' || busy === 'stop' ? 'Working…' : m.state === 'running' ? 'Stop' : 'Start'}
             </button>
           )}
+          {dockur && app.canOperate && m.state === 'running' && (
+            <button type="button" className="btn-secondary" onClick={restart} disabled={!!busy}>
+              <Icon name="refresh" size={14} />
+              {busy === 'restart' ? 'Restarting…' : 'Restart'}
+            </button>
+          )}
           {linux && ip && (
             <button type="button" className="btn-secondary" onClick={() => copy(sshCommand(m, img?.defaultUser))}>
               <Icon name="copy" size={14} />
@@ -227,6 +250,11 @@ export default function MachineDetail() {
             <p>{pendingReason}</p>
           </div>
         )}
+
+        {dockur && ['running', 'starting', 'provisioning'].includes(m.state) && <ReadinessBar m={m} refreshKey={readyKey} />}
+
+        {dockur && m.spec.dockur?.jobAgent && m.state === 'running' && <JobsPanel m={m} canOperate={app.canOperate} />}
+        {dockur && hasShared(m.spec.dockur) && m.state === 'running' && <SharedPanel m={m} canOperate={app.canOperate} />}
 
         {app.caps?.snapshots && (
           <section className="detail-section">
@@ -305,8 +333,12 @@ function DockurSummary({ m }: { m: Machine }) {
   if (d.productKey) add('Product key', '•••••-•••••-•••••-•••••-•••••');
   add('Domain', d.domain);
   add('Domain OU', d.domainOu);
-  add('Shared folder', d.sharedDir);
-  add('OEM folder', d.oemDir);
+  if (d.shared || d.jobAgent) add('Shared folder', 'Enabled (\\\\host.lan\\Data)');
+  if (d.oemScript) add('Install script', 'install.bat at first boot');
+  if (d.jobAgent) add('Job agent', 'Installed');
+  add('Network exposure', d.publicBind ? 'All interfaces (publicBind)' : 'Host loopback only');
+  add('Shared folder (legacy)', d.sharedDir);
+  add('OEM folder (legacy)', d.oemDir);
   add('Post-install cmd', d.command);
   add('Custom ISO', d.customIso);
   add('Edition', d.edition);

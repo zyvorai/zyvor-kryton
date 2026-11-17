@@ -28,6 +28,10 @@ export type ConfirmRequest = {
   confirmLabel?: string;
   destructive?: boolean;
   input?: { label: string; placeholder?: string };
+  /** Optional checkbox; resolves 'checked' when ticked, '' otherwise. */
+  checkbox?: { label: string };
+  /** One-time secret shown read-only with a Copy button; the only way out is the confirm button. */
+  secret?: { label: string; value: string };
   resolve: (value: string | null) => void;
 };
 

@@ -4,6 +4,13 @@ All notable changes to Kryton are documented here, in [Keep a Changelog](https:/
 
 For narrative release write-ups (what changed and why, aimed at operators), see [RELEASE_NOTES.md](RELEASE_NOTES.md). This file is the flat, version-by-version index; RELEASE_NOTES.md is the prose companion — keep both in sync when cutting a release.
 
+## [Unreleased]
+
+### Changed
+
+- Web console: the dockur create form drops the legacy host-folder fields (`sharedDir` / `oemDir`, which now return 400 for host paths) and offers `shared`, `oemScript` (paste or load an `install.bat`), `jobAgent`, `publicBind` (off by default, with a warning) and optional `rdpPort` / `consolePort`. The password is optional; when left empty the generated password is shown once in a copy-once dialog. The old `admin` default in the form is gone.
+- Web console, machine detail (dockur): readiness and install progress from `GET /ready` (polled while installing), a Restart button (graceful, with a force option), a Jobs panel (list, submit with `cmd` or `powershell` and a timeout, logs, cancel) and a Shared folder panel (browse, upload, download, delete). Mutating controls are hidden for viewer keys. Embedded bundle rebuilt.
+
 ## [1.4.0] - 2026-11-17
 
 ### Changed
@@ -16,7 +23,7 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - Not bumped: vitest 5.0.3 -> 5.1.0 and @vitejs/plugin-react 6.1.1 -> 6.3.0 (minor releases, left for dependabot/a separate change); vendored noVNC stays at 1.5.0 (1.7.0 exists, but `web/public/novnc-rfb.js` is a bundled build and needs a reviewed rebuild; MPL-2.0 license file unchanged).
 - **Security:** dockur RDP and web-viewer ports bind to `127.0.0.1` by default; `dockur.publicBind` opts into `0.0.0.0`. `rdpHost` reflects the bind.
 - **Security:** when `dockur.password` is omitted a random 20-character password is generated and returned once as `generatedPassword` (the `admin` default is gone).
-- **Breaking:** `dockur.sharedDir` / `dockur.oemDir` no longer accept host paths (they were an arbitrary host mount); they name a single directory under the machine directory. Use `shared` / `oemScript`. The bundled web UI create form still labels them as host folders.
+- **Breaking:** `dockur.sharedDir` / `dockur.oemDir` no longer accept host paths (they were an arbitrary host mount); they name a single directory under the machine directory. Use `shared` / `oemScript`.
 - Explicit or auto-allocated RDP/console ports are checked against all machines and the host; a clash is `409 CONFLICT` with the reason. Provider errors `ErrInvalid` (400), `ErrTooLarge` (413) and `ErrPrecondition` (409) are mapped by the API.
 - dockur `start` leaves the machine `starting` until RDP answers; machine state flips to `running` on an RDP handshake rather than on the web viewer responding.
 - **`/metrics` is no longer anonymous when API auth is enabled.** Set `KRYTON_METRICS_TOKEN` (and `metrics.tokenSecret` in Helm) for Prometheus, or `KRYTON_METRICS_PUBLIC=true` to keep the old behaviour. With `KRYTON_AUTH_MODE=disabled` it stays open.
