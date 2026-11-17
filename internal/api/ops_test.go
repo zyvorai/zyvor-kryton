@@ -215,11 +215,7 @@ func TestAuditRecordsMutatingCallsOnly(t *testing.T) {
 	}
 
 	// Filters and pagination.
-	var f struct {
-		Items      []audit.Entry
-		NextCursor string
-	}
-	f = decode[struct {
+	f := decode[struct {
 		Items      []audit.Entry
 		NextCursor string
 	}](t, e.do("GET", "/api/v1/audit?actor=lab-op&limit=2", tAdmin, nil))
