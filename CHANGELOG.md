@@ -14,6 +14,14 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - Operator console deps (`web/`): react and react-dom 19.3.0 -> 19.3.1 (RSC transport only, no client behaviour change); vite 8.3.2 -> 8.3.8 (patch fixes). Embedded bundle in `cmd/krytond/web` rebuilt.
 - Unchanged because already current: gorilla/websocket v1.5.3, golang.org/x/time v0.16.0, every GitHub Action major, mkdocs 1.6.1 / mkdocs-material 9.8.1 (ranges unchanged; docs build verified). The `go` directive stays at 1.27.1 (documented minimum).
 - Not bumped: vitest 5.0.3 -> 5.1.0 and @vitejs/plugin-react 6.1.1 -> 6.3.0 (minor releases, left for dependabot/a separate change); vendored noVNC stays at 1.5.0 (1.7.0 exists, but `web/public/novnc-rfb.js` is a bundled build and needs a reviewed rebuild; MPL-2.0 license file unchanged).
+- **Security:** dockur RDP and web-viewer ports bind to `127.0.0.1` by default; `dockur.publicBind` opts into `0.0.0.0`. `rdpHost` reflects the bind.
+- **Security:** when `dockur.password` is omitted a random 20-character password is generated and returned once as `generatedPassword` (the `admin` default is gone).
+- **Breaking:** `dockur.sharedDir` / `dockur.oemDir` no longer accept host paths (they were an arbitrary host mount); they name a single directory under the machine directory. Use `shared` / `oemScript`. The bundled web UI create form still labels them as host folders.
+- Explicit or auto-allocated RDP/console ports are checked against all machines and the host; a clash is `409 CONFLICT` with the reason. Provider errors `ErrInvalid` (400), `ErrTooLarge` (413) and `ErrPrecondition` (409) are mapped by the API.
+- dockur `start` leaves the machine `starting` until RDP answers; machine state flips to `running` on an RDP handshake rather than on the web viewer responding.
+- **`/metrics` is no longer anonymous when API auth is enabled.** Set `KRYTON_METRICS_TOKEN` (and `metrics.tokenSecret` in Helm) for Prometheus, or `KRYTON_METRICS_PUBLIC=true` to keep the old behaviour. With `KRYTON_AUTH_MODE=disabled` it stays open.
+- `role` is optional in `keys.json`: a key that lists `projects` without a `role` is treated as `admin`, matching how every existing key behaved. Existing files need no change.
+
 ### Added
 
 - dockur provider: first-class shared folder (`dockur.shared`, `/shared` = `\\host.lan\Data`) with list/download/upload/delete endpoints (`/machines/{id}/shared`), and an OEM first-boot script (`dockur.oemScript` -> `/oem/install.bat`). Host paths stay under the machine directory: `..`, absolute paths, backslashes, drive letters and symlinks are rejected; uploads are size-limited (`KRYTON_DOCKUR_MAX_UPLOAD_MIB`, default 1024), atomic, role- and project-scoped.
@@ -22,16 +30,6 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - `krytonctl`: `ready`, `restart`, `logs`, `shared-ls/put/get/rm`, `job-run` (`--wait` mirrors the job's exit code), `jobs`, `job-get/logs/cancel/artifacts/artifact`; create flags `--dockur-shared`, `--dockur-oem-script`, `--dockur-job-agent`, `--dockur-public-bind`, `--dockur-rdp-port`, `--dockur-console-port`.
 - Catalog: Windows 11 images labelled 25H2, Windows 11/10 LTSC editions, plus Tiny10 and Windows Server 2012; dockur VERSION codes verified against the dockur/windows README. ARM64 images are rejected as unsupported.
 - Fake container-runtime test seam (`dockur.Config.Hooks`) and tests for every new path; OpenAPI entries for all new endpoints.
-
-### Changed
-
-- **Security:** dockur RDP and web-viewer ports bind to `127.0.0.1` by default; `dockur.publicBind` opts into `0.0.0.0`. `rdpHost` reflects the bind.
-- **Security:** when `dockur.password` is omitted a random 20-character password is generated and returned once as `generatedPassword` (the `admin` default is gone).
-- **Breaking:** `dockur.sharedDir` / `dockur.oemDir` no longer accept host paths (they were an arbitrary host mount); they name a single directory under the machine directory. Use `shared` / `oemScript`. The bundled web UI create form still labels them as host folders.
-- Explicit or auto-allocated RDP/console ports are checked against all machines and the host; a clash is `409 CONFLICT` with the reason. Provider errors `ErrInvalid` (400), `ErrTooLarge` (413) and `ErrPrecondition` (409) are mapped by the API.
-- dockur `start` leaves the machine `starting` until RDP answers; machine state flips to `running` on an RDP handshake rather than on the web viewer responding.
-### Added
-
 - Prometheus `/metrics` expanded: machines by project/provider/state, provider health (`kryton_provider_up`), per-route request counts and latency histograms, rate-limit rejections, auth failures, quota usage/limits, webhook and scheduler counters. Protected by a dedicated `KRYTON_METRICS_TOKEN` (or any API key, scoped to its projects). The Helm ServiceMonitor now presents the token (`metrics.tokenSecret`).
 - Append-only audit log of every mutating API call (and scheduler/TTL actions): `GET /api/v1/audit` with filters (project, actor, action, machine, result, time range) and cursor pagination; optional size-rotated JSONL sink (`KRYTON_AUDIT_FILE`, `KRYTON_AUDIT_MAX_FILE_BYTES`, `KRYTON_AUDIT_MAX_FILES`). `krytonctl audit`.
 - Per-project outbound webhooks (`/api/v1/webhooks…`) for CloudEvents: glob event filters, HMAC-SHA256 signed deliveries (timestamp + body), exponential-backoff retries, delivery log, dead-letter list and redelivery, test deliveries, and an SSRF guard (https only, no private/loopback/link-local/metadata ranges, re-checked at dial time; `KRYTON_WEBHOOK_ALLOW_HOSTS` to allow internal receivers). `krytonctl webhooks`.
@@ -40,11 +38,6 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - Per-project quotas on machines, vCPU, memory and disk (`/api/v1/quotas…`, `KRYTON_QUOTA_MAX_*`, `KRYTON_QUOTAS_FILE`), enforced at create with `QUOTA_EXCEEDED`: 409 when current usage is the obstacle, 403 when a single machine can never fit. `krytonctl quota`.
 - Per-project API-key roles: `grants` in `keys.json` (and `X-Kryton-Grants` in proxy mode) give viewer/operator/admin per project; `krytonctl new-key` generates an entry.
 - New docs: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md); AUTH, API, DEPLOYMENT, GA and ARCHITECTURE updated; OpenAPI extended (all three copies in sync).
-
-### Changed
-
-- **`/metrics` is no longer anonymous when API auth is enabled.** Set `KRYTON_METRICS_TOKEN` (and `metrics.tokenSecret` in Helm) for Prometheus, or `KRYTON_METRICS_PUBLIC=true` to keep the old behaviour. With `KRYTON_AUTH_MODE=disabled` it stays open.
-- `role` is optional in `keys.json`: a key that lists `projects` without a `role` is treated as `admin`, matching how every existing key behaved. Existing files need no change.
 
 ## [1.3.0] - 2026-10-17
 
