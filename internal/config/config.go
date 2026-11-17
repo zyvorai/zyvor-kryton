@@ -206,7 +206,7 @@ func Load() (Config, error) {
 	}
 	cfg.MetricsToken = strings.TrimSpace(os.Getenv("KRYTON_METRICS_TOKEN"))
 	if f := strings.TrimSpace(os.Getenv("KRYTON_METRICS_TOKEN_FILE")); f != "" && cfg.MetricsToken == "" {
-		// #nosec G304 -- operator-configured secret file
+		// #nosec G304 G703 -- operator-configured secret file
 		b, err := os.ReadFile(f)
 		if err != nil {
 			return Config{}, fmt.Errorf("read KRYTON_METRICS_TOKEN_FILE: %w", err)

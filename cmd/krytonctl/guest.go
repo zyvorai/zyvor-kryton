@@ -131,6 +131,7 @@ func guestCommand(c client, cmd string, args []string) {
 		if *outFile == "" {
 			return os.Stdout
 		}
+		// #nosec G703 -- path is chosen by the operator running the CLI
 		o, err := os.Create(*outFile)
 		if err != nil {
 			fatal(err)
@@ -170,6 +171,7 @@ func guestCommand(c client, cmd string, args []string) {
 		c.do("GET", base+"/shared"+q+p, nil)
 	case "shared-put":
 		need(3, "MACHINE_ID LOCAL_FILE REMOTE_PATH [--overwrite]")
+		// #nosec G703 -- path is chosen by the operator running the CLI
 		fh, err := os.Open(f.Arg(1))
 		if err != nil {
 			fatal(err)
@@ -218,6 +220,7 @@ func guestCommand(c client, cmd string, args []string) {
 	case "job-run":
 		script := strings.Join(f.Args()[1:], " ")
 		if *file != "" {
+			// #nosec G703 -- path is chosen by the operator running the CLI
 			b, err := os.ReadFile(*file)
 			if err != nil {
 				fatal(err)
@@ -321,6 +324,7 @@ func dockurExtras(shared bool, oemScriptFile string, jobAgent, publicBind bool, 
 		out["shared"] = true
 	}
 	if oemScriptFile != "" {
+		// #nosec G304 -- path is chosen by the operator running the CLI
 		b, err := os.ReadFile(oemScriptFile)
 		if err != nil {
 			fatal(err)
