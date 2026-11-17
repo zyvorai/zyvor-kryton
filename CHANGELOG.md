@@ -6,6 +6,8 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-17
+
 ### Changed
 
 - Web console: the dockur create form drops the legacy host-folder fields (`sharedDir` / `oemDir`, which now return 400 for host paths) and offers `shared`, `oemScript` (paste or load an `install.bat`), `jobAgent`, `publicBind` (off by default, with a warning) and optional `rdpPort` / `consolePort`. The password is optional; when left empty the generated password is shown once in a copy-once dialog. The old `admin` default in the form is gone.

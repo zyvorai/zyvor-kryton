@@ -2,6 +2,13 @@
 
 Narrative release write-ups. For the flat, Keep-a-Changelog-style version index, see [CHANGELOG.md](CHANGELOG.md).
 
+## 1.4.1
+
+Console and docs update on top of 1.4.0; no API or behaviour changes.
+
+- **Console:** the dockur create form matches the 1.4.0 API (`shared`, `oemScript`, `jobAgent`, `publicBind`, optional ports, generated password shown once). Machine detail gains readiness and install progress, graceful Restart, a Jobs panel and a Shared folder panel. Mutating controls are hidden for viewer keys. Embedded bundle rebuilt.
+- **Docs:** `docs/DOCKUR.md` adds operating notes from a real Windows lab (what `ready` means, first-boot timing, storage speed, blank viewer, deleting machines, Compose requirement, auto-auth on public hosts).
+
 ## 1.4.0
 
 Kryton is now operable day to day, and its Windows (dockur) provider can run unattended build and test jobs.
