@@ -201,6 +201,7 @@ func main() {
 		CORSOrigins:    cfg.CORSOrigins,
 		RateLimitRPS:   cfg.RateLimitRPS,
 		RateLimitBurst: cfg.RateLimitBurst,
+		MaxUploadBytes: int64(cfg.Dockur.MaxUploadMiB) << 20,
 		Jobs: &jobs.Service{
 			Provider: p, Golden: goldenMgr, StorageSetup: storageSetup, Projects: cfg.Projects,
 			DockurData: cfg.Dockur.DataDir, DockurRun: cfg.Dockur.Runtime,
@@ -216,6 +217,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 	go reconciler.TTL{Provider: p, Projects: cfg.Projects, Events: bus, Log: log, Interval: cfg.ReconcileInterval}.Run(ctx)
+	if dp, ok := p.(*dockur.Provider); ok {
+		// Guest job submission/completion become CloudEvents even when nobody polls.
+		dp.SetEventSink(func(ctx context.Context, typ, subject string, data map[string]any) {
+			bus.Publish(ctx, typ, subject, data)
+		})
+		go dp.RunMonitor(ctx, 5*time.Second)
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

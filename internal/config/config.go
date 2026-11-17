@@ -68,6 +68,8 @@ type Dockur struct {
 	PublicHost string
 	HTTPBase   int
 	RDPBase    int
+	// MaxUploadMiB caps one shared-folder upload (KRYTON_DOCKUR_MAX_UPLOAD_MIB, default 1024).
+	MaxUploadMiB int
 }
 
 // Kubernetes carries the credentials the kubevirt provider uses to reach
@@ -146,6 +148,8 @@ func Load() (Config, error) {
 			PublicHost: getenv("KRYTON_DOCKUR_PUBLIC_HOST", "127.0.0.1"),
 			HTTPBase:   intEnv("KRYTON_DOCKUR_HTTP_BASE", 18006),
 			RDPBase:    intEnv("KRYTON_DOCKUR_RDP_BASE", 13389),
+
+			MaxUploadMiB: intEnv("KRYTON_DOCKUR_MAX_UPLOAD_MIB", 1024),
 		},
 	}
 	if cfg.Provider == "kubevirt" {

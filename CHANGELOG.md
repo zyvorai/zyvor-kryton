@@ -6,6 +6,23 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+### Added
+
+- dockur provider: first-class shared folder (`dockur.shared`, `/shared` = `\\host.lan\Data`) with list/download/upload/delete endpoints (`/machines/{id}/shared`), and an OEM first-boot script (`dockur.oemScript` -> `/oem/install.bat`). Host paths stay under the machine directory: `..`, absolute paths, backslashes, drive letters and symlinks are rejected; uploads are size-limited (`KRYTON_DOCKUR_MAX_UPLOAD_MIB`, default 1024), atomic, role- and project-scoped.
+- dockur guest jobs API (`/machines/{id}/jobs`, logs, artifacts, cancel) driven by a PowerShell guest agent installed through the OEM script (`dockur.jobAgent`); timeouts enforced by agent and host; `io.kryton.machine.job.submitted` / `.completed` CloudEvents from a background monitor.
+- `POST /machines/{id}/restart` (graceful ACPI shutdown then start, `force`, wait for RDP), `GET /machines/{id}/ready` probe (container, RDP X.224 handshake, agent heartbeat, install progress parsed from dockur logs), `GET /machines/{id}/logs`; events `io.kryton.machine.restarted` / `.ready`.
+- `krytonctl`: `ready`, `restart`, `logs`, `shared-ls/put/get/rm`, `job-run` (`--wait` mirrors the job's exit code), `jobs`, `job-get/logs/cancel/artifacts/artifact`; create flags `--dockur-shared`, `--dockur-oem-script`, `--dockur-job-agent`, `--dockur-public-bind`, `--dockur-rdp-port`, `--dockur-console-port`.
+- Catalog: Windows 11 images labelled 25H2, Windows 11/10 LTSC editions, plus Tiny10 and Windows Server 2012; dockur VERSION codes verified against the dockur/windows README. ARM64 images are rejected as unsupported.
+- Fake container-runtime test seam (`dockur.Config.Hooks`) and tests for every new path; OpenAPI entries for all new endpoints.
+
+### Changed
+
+- **Security:** dockur RDP and web-viewer ports bind to `127.0.0.1` by default; `dockur.publicBind` opts into `0.0.0.0`. `rdpHost` reflects the bind.
+- **Security:** when `dockur.password` is omitted a random 20-character password is generated and returned once as `generatedPassword` (the `admin` default is gone).
+- **Breaking:** `dockur.sharedDir` / `dockur.oemDir` no longer accept host paths (they were an arbitrary host mount); they name a single directory under the machine directory. Use `shared` / `oemScript`. The bundled web UI create form still labels them as host folders.
+- Explicit or auto-allocated RDP/console ports are checked against all machines and the host; a clash is `409 CONFLICT` with the reason. Provider errors `ErrInvalid` (400), `ErrTooLarge` (413) and `ErrPrecondition` (409) are mapped by the API.
+- dockur `start` leaves the machine `starting` until RDP answers; machine state flips to `running` on an RDP handshake rather than on the web viewer responding.
+
 ## [1.3.0] - 2026-10-17
 
 ### Added

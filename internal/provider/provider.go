@@ -20,6 +20,13 @@ var (
 	ErrNotFound    = errors.New("resource not found")
 	ErrConflict    = errors.New("resource already exists")
 	ErrUnsupported = errors.New("operation unsupported")
+	// ErrInvalid marks caller input rejected by a provider (bad path, ...); maps to 400.
+	ErrInvalid = errors.New("invalid input")
+	// ErrTooLarge marks an upload over the size limit; maps to 413.
+	ErrTooLarge = errors.New("payload too large")
+	// ErrPrecondition marks a request the machine's current setup cannot
+	// satisfy (e.g. no guest agent installed); maps to 409.
+	ErrPrecondition = errors.New("precondition failed")
 )
 
 // Provider is the machine lifecycle contract every backend (demo, dockur,
