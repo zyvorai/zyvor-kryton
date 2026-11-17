@@ -35,9 +35,14 @@ const (
 // Principal is the caller identity resolved from a request by
 // Authenticator.Middleware, retrievable in a handler via FromContext.
 type Principal struct {
-	Name     string   `json:"name"`
+	Name string `json:"name"`
+	// Role applies to every project listed in Projects.
 	Role     Role     `json:"role"`
 	Projects []string `json:"projects"` // "*" grants every project
+	// Grants gives a specific Role on individual projects, in addition to
+	// Role/Projects; the highest matching role wins. It lets one key be
+	// viewer on "prod" and operator on "lab".
+	Grants map[string]Role `json:"grants,omitempty"`
 }
 
 // Config selects and configures an auth Mode ("disabled", "apikey", or "proxy") for New.
@@ -51,10 +56,14 @@ type Config struct {
 }
 
 type keyRecord struct {
-	Name     string   `json:"name"`
-	SHA256   string   `json:"sha256,omitempty"`
-	Role     Role     `json:"role"`
-	Projects []string `json:"projects"`
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256,omitempty"`
+	// Role is optional for backward compatibility: keys written before
+	// per-project grants existed always carry it, and a record that omits
+	// it (but lists projects) is treated as admin.
+	Role     Role            `json:"role,omitempty"`
+	Projects []string        `json:"projects,omitempty"`
+	Grants   map[string]Role `json:"grants,omitempty"`
 	hash     [32]byte
 }
 
@@ -110,8 +119,19 @@ func New(cfg Config) (*Authenticator, error) {
 	}
 	for i := range f.Keys {
 		k := &f.Keys[i]
-		if k.Name == "" || !validRole(k.Role) || len(k.Projects) == 0 {
+		if k.Role == "" && len(k.Projects) > 0 {
+			k.Role = Admin // legacy/unscoped-role keys keep full access
+		}
+		if k.Name == "" || len(k.Projects)+len(k.Grants) == 0 {
 			return nil, fmt.Errorf("invalid api key entry %d", i)
+		}
+		if len(k.Projects) > 0 && !validRole(k.Role) {
+			return nil, fmt.Errorf("api key %q has invalid role %q", k.Name, k.Role)
+		}
+		for proj, gr := range k.Grants {
+			if proj == "" || !validRole(gr) {
+				return nil, fmt.Errorf("api key %q has an invalid grant %q=%q", k.Name, proj, gr)
+			}
 		}
 		if k.SHA256 == "" {
 			return nil, fmt.Errorf("api key %q requires a sha256 digest", k.Name)
@@ -149,6 +169,10 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// Authenticate resolves the Principal for r without touching the response;
+// it is for handlers (such as /metrics) that gate themselves.
+func (a *Authenticator) Authenticate(r *http.Request) (Principal, error) { return a.authenticate(r) }
+
 func (a *Authenticator) authenticate(r *http.Request) (Principal, error) {
 	switch a.mode {
 	case "disabled":
@@ -164,10 +188,14 @@ func (a *Authenticator) authenticate(r *http.Request) (Principal, error) {
 		name := strings.TrimSpace(r.Header.Get("X-Kryton-User"))
 		role := Role(strings.ToLower(strings.TrimSpace(r.Header.Get("X-Kryton-Role"))))
 		projects := splitCSV(r.Header.Get("X-Kryton-Projects"))
-		if name == "" || !validRole(role) || len(projects) == 0 {
+		grants, gerr := parseGrants(r.Header.Get("X-Kryton-Grants"))
+		if gerr != nil {
+			return Principal{}, gerr
+		}
+		if name == "" || (len(projects) > 0 && !validRole(role)) || len(projects)+len(grants) == 0 {
 			return Principal{}, errors.New("missing trusted proxy identity headers")
 		}
-		return Principal{Name: name, Role: role, Projects: projects}, nil
+		return Principal{Name: name, Role: role, Projects: projects, Grants: grants}, nil
 	case "apikey":
 		h := r.Header.Get("Authorization")
 		if !strings.HasPrefix(h, "Bearer ") {
@@ -176,7 +204,7 @@ func (a *Authenticator) authenticate(r *http.Request) (Principal, error) {
 		tokenHash := sha256.Sum256([]byte(strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))))
 		for _, k := range a.keys {
 			if subtle.ConstantTimeCompare(tokenHash[:], k.hash[:]) == 1 {
-				return Principal{Name: k.Name, Role: k.Role, Projects: append([]string(nil), k.Projects...)}, nil
+				return Principal{Name: k.Name, Role: k.Role, Projects: append([]string(nil), k.Projects...), Grants: copyGrants(k.Grants)}, nil
 			}
 		}
 		return Principal{}, errors.New("invalid bearer token")
@@ -201,18 +229,56 @@ func FromContext(ctx context.Context) Principal {
 	return Principal{}
 }
 
-// Can reports whether p holds at least the required Role and is scoped
-// to project (directly, or via a "*" wildcard project).
+// Can reports whether p holds at least the required Role on project:
+// either through Role + Projects (directly or via a "*" wildcard) or
+// through a per-project entry in Grants.
 func Can(p Principal, project string, required Role) bool {
-	if rank(p.Role) < rank(required) {
-		return false
-	}
+	return rank(RoleFor(p, project)) >= rank(required) && rank(required) > 0
+}
+
+// RoleFor returns the highest Role p holds on project, or "" if none.
+func RoleFor(p Principal, project string) Role {
+	best := Role("")
 	for _, allowed := range p.Projects {
-		if allowed == "*" || allowed == project {
-			return true
+		if (allowed == "*" || allowed == project) && rank(p.Role) > rank(best) {
+			best = p.Role
 		}
 	}
-	return false
+	if g, ok := p.Grants[project]; ok && rank(g) > rank(best) {
+		best = g
+	}
+	return best
+}
+
+// IsGlobalAdmin reports whether p is admin on every project ("*").
+func IsGlobalAdmin(p Principal) bool { return Can(p, "*", Admin) }
+
+func copyGrants(in map[string]Role) map[string]Role {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]Role, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+// parseGrants parses "proj=role,proj2=role" (the X-Kryton-Grants header).
+func parseGrants(v string) (map[string]Role, error) {
+	out := map[string]Role{}
+	for _, part := range splitCSV(v) {
+		proj, role, ok := strings.Cut(part, "=")
+		r := Role(strings.ToLower(strings.TrimSpace(role)))
+		if !ok || strings.TrimSpace(proj) == "" || !validRole(r) {
+			return nil, errors.New("invalid X-Kryton-Grants header")
+		}
+		out[strings.TrimSpace(proj)] = r
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 // FilterProjects returns the subset of configured that p can at least

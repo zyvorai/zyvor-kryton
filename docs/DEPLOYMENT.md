@@ -98,7 +98,8 @@ helm upgrade --install kryton ./deploy/helm/kryton -n kryton -f deploy/helm/kryt
 
 ## Observability & availability
 
-- `GET /metrics` exposes Prometheus-text counters. Set `serviceMonitor.enabled: true` in the Helm chart to have a Prometheus Operator scrape it automatically.
+- `GET /metrics` exposes Prometheus metrics (machines by state, provider health, request counts and latency histograms, rate-limit rejections, quotas, webhooks). With auth enabled it needs a token: create a Secret, set `metrics.tokenSecret.name` and `serviceMonitor.enabled: true` and the chart wires both the Deployment and the ServiceMonitor. See [OBSERVABILITY.md](OBSERVABILITY.md).
+- Audit log, per-project webhooks, scheduled power actions, TTL defaults and quotas are configured with `audit.*`, `webhookAllowHosts`, `defaultTTLMinutes` and `quota.*` in the chart; state files live on the `state` volume, so mount a persistent volume there if they must survive pod replacement.
 - `podDisruptionBudget.enabled: true` protects against voluntary disruption — but only enable it once running more than one `krytond` replica is actually safe (see below).
 - **Run exactly one `krytond` replica.** The TTL reconciler has no leader election and the event bus is in-process, so more than one replica is unsafe today. Full details: [ARCHITECTURE.md § Single-replica today](ARCHITECTURE.md#single-replica-today), [deploy/helm/kryton/README.md § Single-replica today](https://github.com/zyvorai/kryton/blob/main/deploy/helm/kryton/README.md#single-replica-today).
 - Set `KRYTON_RATE_LIMIT_RPS`/`KRYTON_RATE_LIMIT_BURST` (Helm: `rateLimit.rps`/`.burst`) to protect the API from a noisy caller; see [API.md § Rate limiting](API.md#rate-limiting).

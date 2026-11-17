@@ -60,6 +60,7 @@ nav:
   - Reference:
       - Architecture: ARCHITECTURE.md
       - API reference: API.md
+      - Operations and observability: OBSERVABILITY.md
       - GA path: GA.md
       - Linux test results: LINUX-TEST-RESULTS.md
 extra:

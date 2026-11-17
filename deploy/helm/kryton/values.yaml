@@ -46,6 +46,38 @@ rateLimit:
   rps: 0
   burst: 0
 
+# /metrics access. With auth enabled, /metrics needs a bearer token: create a
+# Secret holding the scrape token and reference it here; the Deployment gets
+# it as KRYTON_METRICS_TOKEN and the ServiceMonitor presents it. Set
+# public=true only if the endpoint is already protected by a NetworkPolicy.
+#   kubectl -n kryton create secret generic kryton-metrics --from-literal=token="$(krytonctl generate-token)"
+metrics:
+  tokenSecret:
+    name: ""
+    key: token
+  public: false
+
+# Append-only audit log of mutating API calls. Entries are always queryable via
+# GET /api/v1/audit; set file to also write JSONL (rotated by size).
+audit:
+  file: ""            # e.g. /var/lib/kryton/audit.jsonl
+  maxFileBytes: 10485760
+  maxFiles: 5
+
+# Hosts/CIDRs outbound webhooks may target despite being private (SSRF guard).
+webhookAllowHosts: []
+
+# TTL (minutes) applied to machines created without ttlMinutes; 0 = none.
+defaultTTLMinutes: 0
+
+# Default per-project quota (0 = unlimited). Override per project with
+# PUT /api/v1/quotas/{project}.
+quota:
+  maxMachines: 0
+  maxVCPU: 0
+  maxMemoryMiB: 0
+  maxDiskGiB: 0
+
 # Requires the Prometheus Operator CRDs installed in-cluster. Off by
 # default so the chart installs cleanly without them.
 serviceMonitor:

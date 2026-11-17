@@ -26,6 +26,10 @@ tags:
   - name: images
   - name: jobs
   - name: events
+  - name: audit
+  - name: webhooks
+  - name: schedules
+  - name: quotas
   - name: health
 paths:
   /api/v1:
@@ -244,7 +248,11 @@ paths:
       responses:
         '201': {description: Machine created}
         '400': {description: Invalid request}
-        '409': {description: Name conflict}
+        '403':
+          description: 'Forbidden, or code QUOTA_EXCEEDED when this single machine is larger than a project quota limit'
+        '409':
+          description: 'Name conflict, or code QUOTA_EXCEEDED when the project would exceed its quota (delete something or raise the quota)'
+        '429': {description: Rate limited}
   /api/v1/machines/{id}:
     parameters:
       - $ref: '#/components/parameters/MachineID'
@@ -348,6 +356,378 @@ paths:
         - $ref: '#/components/parameters/Project'
       responses:
         '200': {description: VNC stream}
+  /api/v1/machines/{id}/ttl:
+    parameters:
+      - $ref: '#/components/parameters/MachineID'
+      - $ref: '#/components/parameters/Project'
+    put:
+      tags: [machines]
+      summary: Extend, reset or clear a machine's TTL (operator)
+      description: |
+        Overrides the expiry chosen at create time. `ttlMinutes` counts from now;
+        `0` removes the expiry so the machine never auto-deletes. Deleting the
+        machine discards the override.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ttlMinutes]
+              additionalProperties: false
+              properties:
+                ttlMinutes: {type: integer, minimum: 0, maximum: 43200}
+      responses:
+        '200':
+          description: New expiry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: {type: string}
+                  machineId: {type: string}
+                  ttlMinutes: {type: integer}
+                  expiresAt: {type: [string, 'null'], format: date-time}
+        '400': {description: Invalid ttlMinutes}
+        '403': {description: Requires operator on the project}
+        '404': {description: Machine not found}
+  /api/v1/audit:
+    get:
+      tags: [audit]
+      summary: Query the append-only audit log (admin)
+      description: |
+        One entry per mutating API call (POST/PUT/PATCH/DELETE), including calls
+        rejected with 401/403/429, plus background actions by `system:scheduler`
+        and `system:ttl`. Newest first. Callers see only projects they administer
+        (entries without a project need admin on `*`). Requires admin on at least
+        one project.
+      parameters:
+        - {in: query, name: project, schema: {type: string}}
+        - {in: query, name: actor, description: API key name or user, schema: {type: string}}
+        - {in: query, name: action, description: 'Exact action (machine.create) or prefix ending in *', schema: {type: string}}
+        - {in: query, name: machineId, schema: {type: string}}
+        - {in: query, name: result, schema: {type: string, enum: [success, denied, error]}}
+        - {in: query, name: since, schema: {type: string, format: date-time}}
+        - {in: query, name: until, schema: {type: string, format: date-time}}
+        - {in: query, name: limit, description: Page size (1-500, default 50), schema: {type: integer}}
+        - {in: query, name: cursor, description: nextCursor from the previous page, schema: {type: string}}
+      responses:
+        '200':
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/AuditEntry'}
+                  nextCursor: {type: string}
+        '400': {description: Invalid filter or cursor}
+        '403': {description: Requires admin}
+        '501': {description: Audit log not enabled}
+  /api/v1/webhooks:
+    get:
+      tags: [webhooks]
+      summary: List a project's webhook subscriptions (operator)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200':
+          description: Subscriptions (secrets are never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/WebhookSubscription'}
+    post:
+      tags: [webhooks]
+      summary: Create a webhook subscription (admin)
+      description: |
+        Deliveries are CloudEvents (`application/cloudevents+json`) signed with
+        HMAC-SHA256. The URL must be `https` and must not resolve to a loopback,
+        private, link-local or otherwise reserved address unless allowlisted with
+        `KRYTON_WEBHOOK_ALLOW_HOSTS`. The signing `secret` is returned only here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              additionalProperties: false
+              properties:
+                project: {type: string}
+                url: {type: string, format: uri}
+                description: {type: string}
+                eventTypes:
+                  type: array
+                  maxItems: 20
+                  description: Glob patterns such as `io.kryton.machine.*`; empty = all events.
+                  items: {type: string}
+      responses:
+        '201':
+          description: Created (includes `secret`)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WebhookSubscription'}
+        '400': {description: 'Invalid request or URL blocked by the SSRF guard (code WEBHOOK_URL_BLOCKED)'}
+        '403': {description: Requires admin on the project}
+        '409': {description: 'Subscription limit reached (50 per project, code WEBHOOK_LIMIT)'}
+  /api/v1/webhooks/deliveries:
+    get:
+      tags: [webhooks]
+      summary: Delivery log (operator)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: status, schema: {type: string, enum: [pending, retrying, succeeded, dead]}}
+        - {in: query, name: subscriptionId, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer}}
+        - {in: query, name: cursor, schema: {type: string}}
+      responses:
+        '200':
+          description: Deliveries, newest first (payload omitted)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/WebhookDelivery'}
+                  nextCursor: {type: string}
+  /api/v1/webhooks/dead-letters:
+    get:
+      tags: [webhooks]
+      summary: Deliveries that exhausted their retries (operator)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: subscriptionId, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer}}
+        - {in: query, name: cursor, schema: {type: string}}
+      responses:
+        '200':
+          description: Dead deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/WebhookDelivery'}
+                  nextCursor: {type: string}
+  /api/v1/webhooks/deliveries/{id}:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    get:
+      tags: [webhooks]
+      summary: One delivery with payload and attempt log (operator)
+      responses:
+        '200':
+          description: Delivery
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WebhookDelivery'}
+        '404': {description: Not found}
+  /api/v1/webhooks/deliveries/{id}/redeliver:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    post:
+      tags: [webhooks]
+      summary: Reset a delivery for a fresh round of retries (admin)
+      responses:
+        '202': {description: Queued}
+        '404': {description: Not found}
+  /api/v1/webhooks/{id}:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    get:
+      tags: [webhooks]
+      summary: Get a subscription (operator)
+      responses:
+        '200':
+          description: Subscription
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WebhookSubscription'}
+        '404': {description: Not found}
+    put:
+      tags: [webhooks]
+      summary: Update URL, event types or enabled flag (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                url: {type: string, format: uri}
+                description: {type: string}
+                eventTypes: {type: array, items: {type: string}}
+                enabled: {type: boolean}
+      responses:
+        '200': {description: Updated}
+        '400': {description: Invalid or blocked URL}
+        '404': {description: Not found}
+    delete:
+      tags: [webhooks]
+      summary: Delete a subscription (admin)
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+  /api/v1/webhooks/{id}/test:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    post:
+      tags: [webhooks]
+      summary: Queue an io.kryton.webhook.test delivery (admin)
+      responses:
+        '202': {description: Delivery queued}
+        '404': {description: Not found}
+  /api/v1/schedules:
+    get:
+      tags: [schedules]
+      summary: List scheduled power actions (viewer)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: machineId, schema: {type: string}}
+      responses:
+        '200':
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Schedule'}
+    post:
+      tags: [schedules]
+      summary: Create a scheduled power action (operator)
+      description: |
+        Runs `action` on the machine whenever the 5-field `cron` matches in the
+        given IANA `timezone` (default UTC). A run that starts more than 5 minutes
+        after its slot (for example after downtime) is skipped, not replayed.
+        Deleting the machine removes its schedules.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [machineId, action, cron]
+              additionalProperties: false
+              properties:
+                project: {type: string}
+                machineId: {type: string}
+                action: {type: string, enum: [start, stop, restart, snapshot]}
+                cron: {type: string, example: '0 19 * * mon-fri'}
+                timezone: {type: string, example: Europe/Berlin}
+                snapshotName: {type: string, maxLength: 63}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Schedule'}
+        '400': {description: Invalid action, cron or timezone}
+        '403': {description: Requires operator}
+        '404': {description: Machine not found}
+        '409': {description: 'Schedule limit reached (100 per project, code SCHEDULE_LIMIT)'}
+  /api/v1/schedules/{id}:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    get:
+      tags: [schedules]
+      summary: Get a schedule (viewer)
+      responses:
+        '200':
+          description: Schedule
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Schedule'}
+        '404': {description: Not found}
+    put:
+      tags: [schedules]
+      summary: Update or enable/disable a schedule (operator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                action: {type: string, enum: [start, stop, restart, snapshot]}
+                cron: {type: string}
+                timezone: {type: string}
+                snapshotName: {type: string}
+                enabled: {type: boolean}
+      responses:
+        '200': {description: Updated}
+        '400': {description: Invalid cron or timezone}
+        '404': {description: Not found}
+    delete:
+      tags: [schedules]
+      summary: Delete a schedule (operator)
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+  /api/v1/quotas:
+    get:
+      tags: [quotas]
+      summary: Quota limits and current usage for every project you can view
+      responses:
+        '200':
+          description: Quotas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/ProjectQuota'}
+  /api/v1/quotas/{project}:
+    parameters:
+      - {in: path, name: project, required: true, schema: {type: string}}
+    get:
+      tags: [quotas]
+      summary: One project's quota and usage (viewer)
+      responses:
+        '200':
+          description: Quota
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProjectQuota'}
+    put:
+      tags: [quotas]
+      summary: Set a project's limits (admin); 0 = unlimited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuotaLimits'}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProjectQuota'}
+        '400': {description: Invalid limits or unknown project}
+        '403': {description: Requires admin}
+    delete:
+      tags: [quotas]
+      summary: Remove the override so the project inherits the default (admin)
+      responses:
+        '204': {description: Removed}
   /api/v1/events:
     get:
       tags: [events]
@@ -382,9 +762,30 @@ paths:
   /metrics:
     get:
       tags: [health]
-      security: []
+      summary: Prometheus metrics
+      description: |
+        Prometheus text exposition (v0.0.4). Open when `KRYTON_AUTH_MODE=disabled`
+        or `KRYTON_METRICS_PUBLIC=true`; otherwise present the dedicated
+        `KRYTON_METRICS_TOKEN` (full view) or any valid API key (limited to the
+        projects it can view). Series: `kryton_machines{project,provider,state}`,
+        `kryton_provider_up`, `kryton_api_requests_total{method,route,code}`,
+        `kryton_http_request_duration_seconds` (histogram), `kryton_operations_total`,
+        `kryton_rate_limit_rejections_total`, `kryton_auth_failures_total`,
+        `kryton_quota_limit` / `kryton_quota_usage` / `kryton_quota_rejections_total`,
+        `kryton_webhook_dead_letters` / `kryton_webhook_deliveries_total`,
+        `kryton_scheduled_actions_total`, `kryton_ttl_expirations_total`,
+        `kryton_audit_entries`.
+      security:
+        - bearerAuth: []
+        - metricsToken: []
+        - {}
       responses:
-        '200': {description: Prometheus metrics}
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema: {type: string}
+        '401': {description: Token or API key required}
   /openapi.yaml:
     get:
       tags: [meta]
@@ -402,6 +803,10 @@ components:
       type: http
       scheme: bearer
       description: API key from KRYTON_API_KEYS_FILE (hash with krytonctl hash-token)
+    metricsToken:
+      type: http
+      scheme: bearer
+      description: Dedicated /metrics scrape token (KRYTON_METRICS_TOKEN)
   parameters:
     Project:
       in: query
@@ -424,6 +829,104 @@ components:
       required: true
       schema: {type: string}
   schemas:
+    AuditEntry:
+      type: object
+      properties:
+        seq: {type: integer, format: int64}
+        id: {type: string}
+        time: {type: string, format: date-time}
+        actor: {type: string, description: 'API key name, proxy user, anonymous, system:scheduler or system:ttl'}
+        role: {type: string}
+        project: {type: string}
+        action: {type: string, example: machine.create}
+        machineId: {type: string}
+        method: {type: string}
+        path: {type: string}
+        status: {type: integer}
+        result: {type: string, enum: [success, denied, error]}
+        requestId: {type: string}
+        remote: {type: string}
+        detail: {type: string}
+    WebhookSubscription:
+      type: object
+      properties:
+        id: {type: string}
+        project: {type: string}
+        url: {type: string}
+        description: {type: string}
+        eventTypes: {type: array, items: {type: string}}
+        enabled: {type: boolean}
+        secret: {type: string, description: Returned once, at creation only}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    WebhookDelivery:
+      type: object
+      properties:
+        id: {type: string}
+        subscriptionId: {type: string}
+        project: {type: string}
+        eventId: {type: string}
+        eventType: {type: string}
+        status: {type: string, enum: [pending, retrying, succeeded, dead]}
+        attempts: {type: integer}
+        lastStatusCode: {type: integer}
+        lastError: {type: string}
+        nextAttemptAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        attemptLog:
+          type: array
+          description: Detail view only (last 10 attempts)
+          items:
+            type: object
+            properties:
+              time: {type: string, format: date-time}
+              statusCode: {type: integer}
+              error: {type: string}
+              durationMs: {type: integer}
+        payload: {type: object, description: The CloudEvent; detail view only}
+    Schedule:
+      type: object
+      properties:
+        id: {type: string}
+        project: {type: string}
+        machineId: {type: string}
+        action: {type: string, enum: [start, stop, restart, snapshot]}
+        cron: {type: string}
+        timezone: {type: string}
+        snapshotName: {type: string}
+        enabled: {type: boolean}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        nextRunAt: {type: string, format: date-time}
+        lastRunAt: {type: string, format: date-time}
+        lastResult: {type: string, enum: [success, error, skipped]}
+        lastError: {type: string}
+        runCount: {type: integer}
+    QuotaLimits:
+      type: object
+      additionalProperties: false
+      description: Per-project caps; 0 means unlimited.
+      properties:
+        maxMachines: {type: integer, minimum: 0}
+        maxVCPU: {type: integer, minimum: 0}
+        maxMemoryMiB: {type: integer, minimum: 0}
+        maxDiskGiB: {type: integer, minimum: 0}
+    ProjectQuota:
+      type: object
+      properties:
+        project: {type: string}
+        limits: {$ref: '#/components/schemas/QuotaLimits'}
+        usage:
+          type: object
+          properties:
+            machines: {type: integer}
+            vCPU: {type: integer}
+            memoryMiB: {type: integer}
+            diskGiB: {type: integer}
+        explicit: {type: boolean, description: false when inherited from the default}
     CreateMachine:
       type: object
       required: [project, name, image, compute, disk]

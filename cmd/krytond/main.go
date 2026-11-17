@@ -26,6 +26,7 @@ import (
 
 	"github.com/zyvorai/kryton/internal/api"
 	"github.com/zyvorai/kryton/internal/atlas"
+	"github.com/zyvorai/kryton/internal/audit"
 	"github.com/zyvorai/kryton/internal/auth"
 	"github.com/zyvorai/kryton/internal/catalog"
 	"github.com/zyvorai/kryton/internal/config"
@@ -40,9 +41,12 @@ import (
 	"github.com/zyvorai/kryton/internal/libvirt"
 	"github.com/zyvorai/kryton/internal/metrics"
 	"github.com/zyvorai/kryton/internal/provider"
+	"github.com/zyvorai/kryton/internal/quota"
 	"github.com/zyvorai/kryton/internal/reconciler"
+	"github.com/zyvorai/kryton/internal/schedule"
 	"github.com/zyvorai/kryton/internal/settings"
 	"github.com/zyvorai/kryton/internal/storage"
+	"github.com/zyvorai/kryton/internal/webhooks"
 )
 
 //go:embed web/*
@@ -160,6 +164,51 @@ func main() {
 		bus.SetWebhookURL(runtimeSettings.EventWebhookURL)
 	}
 	m := metrics.New()
+
+	stateFile := func(env, name string) string {
+		if env != "" {
+			return env
+		}
+		if home, _ := os.UserHomeDir(); home != "" {
+			return filepath.Join(home, ".kryton", name)
+		}
+		return ""
+	}
+	auditStore, err := audit.New(audit.Config{File: cfg.AuditFile, MaxEntries: cfg.AuditMaxEntries, MaxFileBytes: cfg.AuditMaxFileBytes, MaxFiles: cfg.AuditMaxFiles})
+	if err != nil {
+		log.Error("audit log failed", "error", err)
+		os.Exit(2)
+	}
+	defer func() { _ = auditStore.Close() }()
+	quotaStore, err := quota.NewStore(stateFile(cfg.QuotasFile, "quotas.json"), quota.Limits{
+		MaxMachines: cfg.QuotaDefault.MaxMachines, MaxVCPU: cfg.QuotaDefault.MaxVCPU,
+		MaxMemoryMiB: cfg.QuotaDefault.MaxMemoryMiB, MaxDiskGiB: cfg.QuotaDefault.MaxDiskGiB,
+	})
+	if err != nil {
+		log.Error("quota store failed", "error", err)
+		os.Exit(2)
+	}
+	scheduleStore, err := schedule.NewStore(stateFile(cfg.SchedulesFile, "schedules.json"), nil)
+	if err != nil {
+		log.Error("schedule store failed", "error", err)
+		os.Exit(2)
+	}
+	guard, err := webhooks.NewGuard(cfg.WebhookAllowHosts)
+	if err != nil {
+		log.Error("webhook allowlist invalid", "error", err)
+		os.Exit(2)
+	}
+	hooks, err := webhooks.NewManager(webhooks.Config{
+		File: stateFile(cfg.WebhooksFile, "webhooks.json"), Guard: guard, Log: log,
+		OnAttempt: func(project, outcome string) {
+			m.Inc("kryton_webhook_deliveries_total", "Webhook delivery attempts by outcome.", map[string]string{"project": project, "outcome": outcome})
+		},
+	})
+	if err != nil {
+		log.Error("webhook manager failed", "error", err)
+		os.Exit(2)
+	}
+	bus.AddSink(hooks.Dispatch)
 	projectRoot := findProjectRoot()
 	var goldenMgr *golden.Manager
 	var storageSetup *storage.SetupManager
@@ -209,13 +258,28 @@ func main() {
 			LinuxImageDir: cfg.LinuxImageDir, Provider: p.Name(), ImageNS: effectiveImageNS, KubeClient: kubeClient,
 			Golden: goldenMgr, ProjectRoot: projectRoot,
 		},
+		Audit: auditStore, Quotas: quotaStore, Webhooks: hooks, Schedules: scheduleStore,
+		MetricsToken: cfg.MetricsToken, MetricsPublic: cfg.MetricsPublic, DefaultTTLMinutes: cfg.DefaultTTLMinutes,
 		Log: log,
 	}).Handler()
 	server := &http.Server{Addr: cfg.Addr, Handler: h, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 0, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 1 << 20}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
-	go reconciler.TTL{Provider: p, Projects: cfg.Projects, Events: bus, Log: log, Interval: cfg.ReconcileInterval}.Run(ctx)
+	go reconciler.TTL{
+		Provider: p, Projects: cfg.Projects, Events: bus, Log: log, Interval: cfg.ReconcileInterval,
+		Overrides: scheduleStore, Audit: auditStore, WarnBefore: cfg.TTLWarn,
+		OnExpire: func(project string) {
+			m.Inc("kryton_ttl_expirations_total", "Machines deleted by TTL expiry.", map[string]string{"project": project})
+		},
+	}.Run(ctx)
+	go (&schedule.Runner{
+		Store: scheduleStore, Provider: p, Events: bus, Audit: auditStore, Log: log,
+		OnRun: func(action, outcome string) {
+			m.Inc("kryton_scheduled_actions_total", "Scheduled power actions by action and outcome.", map[string]string{"action": action, "outcome": outcome})
+		},
+	}).Run(ctx)
+	go hooks.Start(ctx)
 
 	errCh := make(chan error, 1)
 	go func() {

@@ -51,11 +51,32 @@ GET    /api/v1/machines/{id}/snapshots?project=<project>
 POST   /api/v1/machines/{id}/snapshots/{sid}/restore?project=<project>
 DELETE /api/v1/machines/{id}/snapshots/{sid}?project=<project>
 DELETE /api/v1/machines/{id}?project=<project>
+PUT    /api/v1/machines/{id}/ttl?project=<project>   # extend / clear TTL
 GET    /api/v1/events
 GET    /api/v1/events/stream
+GET    /api/v1/audit                     # admin; filters + cursor pagination
+GET    /api/v1/webhooks?project=<project>
+POST   /api/v1/webhooks
+GET    /api/v1/webhooks/{id}
+PUT    /api/v1/webhooks/{id}
+DELETE /api/v1/webhooks/{id}
+POST   /api/v1/webhooks/{id}/test
+GET    /api/v1/webhooks/deliveries?project=<project>&status=&subscriptionId=
+GET    /api/v1/webhooks/deliveries/{id}
+POST   /api/v1/webhooks/deliveries/{id}/redeliver
+GET    /api/v1/webhooks/dead-letters?project=<project>
+GET    /api/v1/schedules?project=<project>&machineId=
+POST   /api/v1/schedules
+GET    /api/v1/schedules/{id}
+PUT    /api/v1/schedules/{id}
+DELETE /api/v1/schedules/{id}
+GET    /api/v1/quotas
+GET    /api/v1/quotas/{project}
+PUT    /api/v1/quotas/{project}
+DELETE /api/v1/quotas/{project}
 ```
 
-Public (no auth): `GET /api/v1` · `GET /openapi.yaml` · `GET /healthz` · `GET /readyz` · `GET /metrics`.
+Public (no auth): `GET /api/v1` · `GET /openapi.yaml` · `GET /healthz` · `GET /readyz`. `GET /metrics` is open only with auth disabled or `KRYTON_METRICS_PUBLIC=true`; otherwise it needs the metrics token or an API key. The audit, webhook, schedule, TTL and quota endpoints are documented in [OBSERVABILITY.md](OBSERVABILITY.md).
 
 OpenAPI 3.1: [`openapi.yaml`](https://github.com/zyvorai/kryton/blob/main/openapi.yaml) — also served live at `/openapi.yaml`.
 
@@ -264,6 +285,11 @@ Common event types:
 | `io.kryton.snapshot.created` | Snapshot requested |
 | `io.kryton.snapshot.restored` | Restore requested |
 | `io.kryton.snapshot.deleted` | Snapshot deleted |
+| `io.kryton.machine.expiring` | Machine is within `KRYTON_TTL_WARN` of its TTL expiry |
+| `io.kryton.machine.ttl.updated` | TTL extended or cleared |
+| `io.kryton.machine.restarted` | Scheduled restart completed |
+| `io.kryton.schedule.created` / `.deleted` / `.executed` | Scheduled action lifecycle and runs |
+| `io.kryton.quota.updated` | Project quota set or removed |
 
 ---
 
@@ -281,7 +307,7 @@ All errors use a consistent envelope:
 }
 ```
 
-Common codes: `INVALID_REQUEST` · `NOT_FOUND` · `FORBIDDEN` · `CONFLICT` · `INTERNAL_ERROR` · `RATE_LIMITED`.
+Common codes: `INVALID_REQUEST` · `NOT_FOUND` · `FORBIDDEN` · `CONFLICT` · `INTERNAL_ERROR` · `RATE_LIMITED` · `QUOTA_EXCEEDED` (403 or 409 on create, see [quotas](OBSERVABILITY.md#project-quotas)) · `WEBHOOK_URL_BLOCKED` · `WEBHOOK_LIMIT` · `SCHEDULE_LIMIT` · `NOT_CONFIGURED` (501).
 
 ---
 

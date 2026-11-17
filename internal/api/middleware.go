@@ -91,7 +91,7 @@ func (s *Server) cors(next http.Handler) http.Handler {
 			if allow != "*" {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-Request-ID, X-Kryton-User, X-Kryton-Role, X-Kryton-Projects, X-Kryton-Proxy-Secret")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-Request-ID, X-Kryton-User, X-Kryton-Role, X-Kryton-Projects, X-Kryton-Grants, X-Kryton-Proxy-Secret")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
 			w.Header().Set("Access-Control-Max-Age", "600")
@@ -126,6 +126,10 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 			status = 200
 		}
 		s.metrics.Request(status >= 400)
+		s.metrics.ObserveRequest(r.Method, routeLabel(r.URL.Path), status, time.Since(start).Seconds())
+		if status == http.StatusUnauthorized && strings.HasPrefix(r.URL.Path, "/api/") {
+			s.metrics.AuthFailed()
+		}
 		level := slog.LevelInfo
 		if status >= 500 {
 			level = slog.LevelError
@@ -213,6 +217,7 @@ func (s *Server) rateLimit(next http.Handler) http.Handler {
 			key = r.RemoteAddr
 		}
 		if !s.rateLimiter.allow(key) {
+			s.metrics.RateLimited()
 			s.writeAPIError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "too many requests", "Slow down and retry after a short backoff.")
 			return
 		}

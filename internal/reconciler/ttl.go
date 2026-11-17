@@ -12,9 +12,18 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/zyvorai/kryton/internal/audit"
 	"github.com/zyvorai/kryton/internal/events"
 	"github.com/zyvorai/kryton/internal/provider"
 )
+
+// ExpiryOverrides lets operators extend or disable a machine's TTL after
+// creation (schedule.Store implements it). Expiry returns ok=false when
+// there is no override, and a nil time for "never expires".
+type ExpiryOverrides interface {
+	Expiry(project, machineID string) (*time.Time, bool)
+	ForgetMachine(project, machineID string) int
+}
 
 // TTL periodically expires machines whose Spec.TTLMinutes deadline has
 // passed. Zero-value Interval defaults to 30s in Run.
@@ -24,6 +33,18 @@ type TTL struct {
 	Events   *events.Bus
 	Log      *slog.Logger
 	Interval time.Duration
+	// Overrides, when set, takes precedence over a machine's own ExpiresAt.
+	Overrides ExpiryOverrides
+	// Audit, when set, records every automatic deletion.
+	Audit *audit.Store
+	// WarnBefore, when > 0, publishes io.kryton.machine.expiring once per
+	// machine when it is within that window of its expiry.
+	WarnBefore time.Duration
+	// OnExpire is called after each automatic deletion (metrics hook).
+	OnExpire func(project string)
+	Now      func() time.Time
+
+	warned map[string]bool
 }
 
 // Run sweeps every configured project once immediately, then on every
@@ -33,6 +54,9 @@ type TTL struct {
 func (r TTL) Run(ctx context.Context) {
 	if r.Interval <= 0 {
 		r.Interval = 30 * time.Second
+	}
+	if r.warned == nil {
+		r.warned = map[string]bool{}
 	}
 	ticker := time.NewTicker(r.Interval)
 	defer ticker.Stop()
@@ -49,6 +73,9 @@ func (r TTL) Run(ctx context.Context) {
 
 func (r TTL) runOnce(ctx context.Context) {
 	now := time.Now().UTC()
+	if r.Now != nil {
+		now = r.Now()
+	}
 	for _, project := range r.Projects {
 		machines, err := r.Provider.List(ctx, project)
 		if err != nil {
@@ -56,12 +83,35 @@ func (r TTL) runOnce(ctx context.Context) {
 			continue
 		}
 		for _, m := range machines {
-			if m.ExpiresAt == nil || now.Before(*m.ExpiresAt) {
+			expires := m.ExpiresAt
+			if r.Overrides != nil {
+				if at, ok := r.Overrides.Expiry(project, m.ID); ok {
+					expires = at
+				}
+			}
+			if expires == nil {
+				continue
+			}
+			if now.Before(*expires) {
+				if r.WarnBefore > 0 && r.warned != nil && expires.Sub(now) <= r.WarnBefore && !r.warned[m.ID] {
+					r.warned[m.ID] = true
+					r.Events.Publish(ctx, "io.kryton.machine.expiring", "machines/"+m.ID, map[string]any{"project": project, "machineId": m.ID, "name": m.Spec.Name, "expiresAt": expires.UTC().Format(time.RFC3339)})
+				}
 				continue
 			}
 			if err := r.Provider.Delete(ctx, project, m.ID); err != nil {
 				r.Log.Warn("ttl delete failed", "project", project, "machine", m.ID, "error", err)
 				continue
+			}
+			if r.Overrides != nil {
+				r.Overrides.ForgetMachine(project, m.ID)
+			}
+			delete(r.warned, m.ID)
+			if r.Audit != nil {
+				_, _ = r.Audit.Record(audit.Entry{Actor: "system:ttl", Role: "system", Project: project, Action: "machine.expire", MachineID: m.ID, Result: audit.ResultSuccess, Detail: "TTL expired at " + expires.UTC().Format(time.RFC3339)})
+			}
+			if r.OnExpire != nil {
+				r.OnExpire(project)
 			}
 			r.Events.Publish(ctx, "io.kryton.machine.expired", "machines/"+m.ID, map[string]any{"project": project, "machineId": m.ID, "name": m.Spec.Name})
 		}
