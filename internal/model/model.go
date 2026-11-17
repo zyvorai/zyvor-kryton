@@ -61,20 +61,37 @@ type NetworkSpec struct {
 // DockurOptions maps to dockur/windows compose environment and volumes.
 // Password is accepted on create and written into compose; API responses redact it.
 type DockurOptions struct {
-	Username      string `json:"username,omitempty"`
-	Password      string `json:"password,omitempty"`
-	Hostname      string `json:"hostname,omitempty"`
-	Language      string `json:"language,omitempty"`
-	Region        string `json:"region,omitempty"`
-	Keyboard      string `json:"keyboard,omitempty"`
-	ProductKey    string `json:"productKey,omitempty"`
-	Domain        string `json:"domain,omitempty"`
-	DomainOU      string `json:"domainOu,omitempty"`
-	Autologin     *bool  `json:"autologin,omitempty"`
-	Audio         bool   `json:"audio,omitempty"`
-	SecureBoot    bool   `json:"secureBoot,omitempty"`
-	SharedDir     string `json:"sharedDir,omitempty"`
-	OemDir        string `json:"oemDir,omitempty"`
+	Username   string `json:"username,omitempty"`
+	Password   string `json:"password,omitempty"`
+	Hostname   string `json:"hostname,omitempty"`
+	Language   string `json:"language,omitempty"`
+	Region     string `json:"region,omitempty"`
+	Keyboard   string `json:"keyboard,omitempty"`
+	ProductKey string `json:"productKey,omitempty"`
+	Domain     string `json:"domain,omitempty"`
+	DomainOU   string `json:"domainOu,omitempty"`
+	Autologin  *bool  `json:"autologin,omitempty"`
+	Audio      bool   `json:"audio,omitempty"`
+	SecureBoot bool   `json:"secureBoot,omitempty"`
+	// SharedDir and OemDir are legacy: they may only name a relative
+	// sub-directory of the machine directory (never a host path). Prefer
+	// Shared and OemScript.
+	SharedDir string `json:"sharedDir,omitempty"`
+	OemDir    string `json:"oemDir,omitempty"`
+	// Shared mounts <machineDir>/shared at /shared (guest: \\host.lan\Data,
+	// drive Z:). OemScript is written to <machineDir>/oem/install.bat and
+	// run by dockur at the end of the first install. JobAgent installs the
+	// Kryton guest agent (via /oem) so the jobs API can run commands; it
+	// implies Shared.
+	Shared    bool   `json:"shared,omitempty"`
+	OemScript string `json:"oemScript,omitempty"`
+	JobAgent  bool   `json:"jobAgent,omitempty"`
+	// PublicBind publishes RDP and the web viewer on 0.0.0.0; the default
+	// is 127.0.0.1 only. RdpPort/ConsolePort request fixed host ports
+	// (1024-65535); 0 means auto-allocate.
+	PublicBind    bool   `json:"publicBind,omitempty"`
+	RdpPort       int    `json:"rdpPort,omitempty"`
+	ConsolePort   int    `json:"consolePort,omitempty"`
 	Command       string `json:"command,omitempty"`
 	CustomISO     string `json:"customIso,omitempty"`
 	Edition       string `json:"edition,omitempty"`
@@ -141,6 +158,10 @@ type Machine struct {
 	UpdatedAt       time.Time   `json:"updatedAt"`
 	// ExpiresAt is derived from Spec.TTLMinutes; nil means the machine never expires.
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// GeneratedPassword is set only on the Create response, and only when
+	// the caller supplied no dockur password. It is never stored or
+	// returned again.
+	GeneratedPassword string `json:"generatedPassword,omitempty"`
 }
 
 // Snapshot is a point-in-time disk capture of a Machine.
@@ -303,6 +324,27 @@ func ValidateMachineSpec(s MachineSpec) error {
 		}
 		if len(d.SharedDir) > 1024 || len(d.OemDir) > 1024 || len(d.CustomISO) > 2048 {
 			problems = append(problems, "dockur path/url fields are too long")
+		}
+		if d.SharedDir != "" {
+			if err := ValidateRelPath(d.SharedDir, false); err != nil {
+				problems = append(problems, "dockur.sharedDir: "+err.Error())
+			}
+		}
+		if d.OemDir != "" {
+			if err := ValidateRelPath(d.OemDir, false); err != nil {
+				problems = append(problems, "dockur.oemDir: "+err.Error())
+			}
+		}
+		if len(d.OemScript) > MaxScriptBytes || strings.ContainsRune(d.OemScript, 0) {
+			problems = append(problems, "dockur.oemScript must be text up to 65536 bytes")
+		}
+		for name, port := range map[string]int{"rdpPort": d.RdpPort, "consolePort": d.ConsolePort} {
+			if port != 0 && (port < 1024 || port > 65535) {
+				problems = append(problems, "dockur."+name+" must be 0 (auto) or between 1024 and 65535")
+			}
+		}
+		if d.RdpPort != 0 && d.RdpPort == d.ConsolePort {
+			problems = append(problems, "dockur.rdpPort and dockur.consolePort must differ")
 		}
 		if len(d.Command) > 4096 {
 			problems = append(problems, "dockur.command is too long")

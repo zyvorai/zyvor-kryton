@@ -76,6 +76,8 @@ type Config struct {
 	// RateLimitRPS <= 0 disables rate limiting (the default).
 	RateLimitRPS   int
 	RateLimitBurst int
+	// MaxUploadBytes caps one shared-folder upload (default 1 GiB).
+	MaxUploadBytes int64
 }
 
 // Server is the assembled HTTP API: a single provider.Provider plus the
@@ -115,6 +117,7 @@ type Server struct {
 	rateLimiter        *rateLimiter
 	corsOrigins        []string
 	consoleTickets     *consoleTickets
+	maxUpload          int64
 }
 
 type createRequest struct {
@@ -157,6 +160,7 @@ func New(cfg Config) *Server {
 		storageConfigPath: cfg.StorageConfigPath, settingsConfigPath: cfg.SettingsConfigPath, corsOrigins: cfg.CORSOrigins,
 		rateLimiter:    newRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst),
 		consoleTickets: newConsoleTickets(),
+		maxUpload:      cfg.MaxUploadBytes,
 	}
 }
 
@@ -199,6 +203,20 @@ func (s *Server) Handler() http.Handler {
 	apiMux.HandleFunc("DELETE /api/v1/machines/{id}", s.deleteMachine)
 	apiMux.HandleFunc("POST /api/v1/machines/{id}/start", s.startMachine)
 	apiMux.HandleFunc("POST /api/v1/machines/{id}/stop", s.stopMachine)
+	apiMux.HandleFunc("POST /api/v1/machines/{id}/restart", s.restartMachine)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/ready", s.machineReady)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/logs", s.machineLogs)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/shared", s.sharedList)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/shared/{path...}", s.sharedDownload)
+	apiMux.HandleFunc("PUT /api/v1/machines/{id}/shared/{path...}", s.sharedUpload)
+	apiMux.HandleFunc("DELETE /api/v1/machines/{id}/shared/{path...}", s.sharedDelete)
+	apiMux.HandleFunc("POST /api/v1/machines/{id}/jobs", s.jobSubmit)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/jobs", s.jobList)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/jobs/{jid}", s.jobGet)
+	apiMux.HandleFunc("POST /api/v1/machines/{id}/jobs/{jid}/cancel", s.jobCancel)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/jobs/{jid}/logs", s.jobLog)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/jobs/{jid}/artifacts", s.jobArtifacts)
+	apiMux.HandleFunc("GET /api/v1/machines/{id}/jobs/{jid}/artifacts/{path...}", s.jobArtifactDownload)
 	apiMux.HandleFunc("POST /api/v1/machines/{id}/snapshot", s.snapshotMachine)
 	apiMux.HandleFunc("GET /api/v1/machines/{id}/snapshots", s.listSnapshots)
 	apiMux.HandleFunc("POST /api/v1/machines/{id}/snapshots/{sid}/restore", s.restoreSnapshot)

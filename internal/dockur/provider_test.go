@@ -55,12 +55,22 @@ func TestConsoleURLAndRDP(t *testing.T) {
 	if m.RdpHost != "lab.example" || m.RdpPort != 13389 || m.RdpUsername != "lab" {
 		t.Fatalf("rdp = %s:%d user=%s", m.RdpHost, m.RdpPort, m.RdpUsername)
 	}
+	// A loopback-bound machine advertises the loopback address, not the public host.
+	p.ports["m1"] = portPair{HTTP: 18006, RDP: 13389, Bind: "127.0.0.1"}
+	p.normalizeConsole(m)
+	if m.RdpHost != "127.0.0.1" {
+		t.Fatalf("rdpHost = %q for loopback bind", m.RdpHost)
+	}
 }
 
 func TestRenderComposeBasics(t *testing.T) {
 	spec := model.MachineSpec{Name: "win1", Image: "windows-11-enterprise", Compute: model.ComputeSpec{CPU: 4, MemoryMiB: 8192}, Disk: model.DiskSpec{SizeGiB: 64}}
-	out := renderCompose(applyDockurDefaults(spec), "11e", portPair{HTTP: 18006, RDP: 13389})
-	for _, want := range []string{`VERSION: "11e"`, `RAM_SIZE: "8G"`, `CPU_CORES: "4"`, `DISK_SIZE: "64G"`, `USERNAME: "Docker"`, `PASSWORD: "admin"`, `HOST: "win1"`, `18006:8006`, `13389:3389`} {
+	applied := applyDockurDefaults(spec)
+	if applied.Dockur.Password == "" || applied.Dockur.Password == "admin" {
+		t.Fatalf("default password must be generated, got %q", applied.Dockur.Password)
+	}
+	out := renderCompose(applied, "11e", portPair{HTTP: 18006, RDP: 13389})
+	for _, want := range []string{`VERSION: "11e"`, `RAM_SIZE: "8G"`, `CPU_CORES: "4"`, `DISK_SIZE: "64G"`, `USERNAME: "Docker"`, `PASSWORD: "` + applied.Dockur.Password + `"`, `HOST: "win1"`, `127.0.0.1:18006:8006`, `127.0.0.1:13389:3389`} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("compose missing %q\n%s", want, out)
 		}
@@ -76,7 +86,7 @@ func TestRenderComposeRichOptions(t *testing.T) {
 			Username: "bill", Password: "gates", Language: "French", Region: "fr-FR", Keyboard: "fr-FR",
 			ProductKey: "AAAAA-BBBBB-CCCCC-DDDDD-EEEEE", Domain: "example.com", DomainOU: "OU=Labs,DC=example,DC=com",
 			Autologin: &auto, Audio: true, SecureBoot: true,
-			SharedDir: "/tmp/shared", OemDir: "/tmp/oem", Command: "echo hi",
+			SharedDir: "shared", OemDir: "oem", Command: "echo hi",
 			ExtraDisksGiB: []int{32, 64}, Edition: "core",
 		},
 	}
@@ -85,7 +95,7 @@ func TestRenderComposeRichOptions(t *testing.T) {
 		`USERNAME: "bill"`, `PASSWORD: "gates"`, `LANGUAGE: "French"`, `AUDIO: "Y"`,
 		`BOOT_MODE: "windows_secure"`, `TPM: "Y"`, `AUTOLOGIN: "N"`,
 		`DISK2_SIZE: "32G"`, `DISK3_SIZE: "64G"`, `./storage2:/storage2`,
-		`"/tmp/shared:/shared"`, `"/tmp/oem:/oem"`, `DOMAIN: "example.com"`, `EDITION: "core"`,
+		`"./shared:/shared"`, `"./oem:/oem"`, `DOMAIN: "example.com"`, `EDITION: "core"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("compose missing %q\n%s", want, out)

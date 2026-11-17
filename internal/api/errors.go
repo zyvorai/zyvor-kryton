@@ -28,7 +28,13 @@ func classifyError(err error) classifiedError {
 	case errors.Is(err, provider.ErrNotFound):
 		return classifiedError{Status: http.StatusNotFound, Code: "NOT_FOUND", Message: "resource not found", Hint: "Refresh the machine list, or check the project query parameter."}
 	case errors.Is(err, provider.ErrConflict):
-		return classifiedError{Status: http.StatusConflict, Code: "CONFLICT", Message: "resource already exists", Hint: "Choose a different machine name in this project."}
+		return classifiedError{Status: http.StatusConflict, Code: "CONFLICT", Message: sentinelDetail(err, provider.ErrConflict, "resource already exists"), Hint: "Choose a different machine name or host port."}
+	case errors.Is(err, provider.ErrInvalid):
+		return classifiedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST", Message: sentinelDetail(err, provider.ErrInvalid, "invalid input"), Hint: "Correct the request and retry."}
+	case errors.Is(err, provider.ErrTooLarge):
+		return classifiedError{Status: http.StatusRequestEntityTooLarge, Code: "PAYLOAD_TOO_LARGE", Message: sentinelDetail(err, provider.ErrTooLarge, "payload too large"), Hint: "Upload a smaller file or raise KRYTON_DOCKUR_MAX_UPLOAD_MIB."}
+	case errors.Is(err, provider.ErrPrecondition):
+		return classifiedError{Status: http.StatusConflict, Code: "PRECONDITION_FAILED", Message: sentinelDetail(err, provider.ErrPrecondition, "precondition failed"), Hint: "Check the machine was created with the required dockur option (shared, jobAgent)."}
 	case errors.Is(err, provider.ErrUnsupported):
 		return classifiedError{
 			Status:  http.StatusNotImplemented,
@@ -90,6 +96,19 @@ func classifyError(err error) classifiedError {
 		Message: msg,
 		Hint:    "Check krytond logs (journalctl -u kryton-kubevirt) and kubectl get events -A.",
 	}
+}
+
+// sentinelDetail returns the text a provider wrapped around sentinel
+// ("sentinel: detail"), or def when err is the bare sentinel.
+func sentinelDetail(err, sentinel error, def string) string {
+	msg := err.Error()
+	if i := strings.Index(msg, sentinel.Error()+": "); i >= 0 {
+		return msg[i+len(sentinel.Error())+2:]
+	}
+	if i := strings.Index(msg, ": "+sentinel.Error()); i >= 0 {
+		return msg[:i]
+	}
+	return def
 }
 
 func classifyMessage(msg string) classifiedError {

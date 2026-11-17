@@ -77,6 +77,10 @@ func main() {
 	case "create":
 		createCommand(c, os.Args[2:])
 	default:
+		if guestCommands[os.Args[1]] {
+			guestCommand(c, os.Args[1], os.Args[2:])
+			return
+		}
 		usage()
 		os.Exit(2)
 	}
@@ -102,8 +106,14 @@ func createCommand(c client, args []string) {
 	dProductKey := f.String("dockur-product-key", "", "dockur product KEY")
 	dDomain := f.String("dockur-domain", "", "dockur DOMAIN for AD join")
 	dDomainOU := f.String("dockur-domain-ou", "", "dockur DOMAIN_OU")
-	dSharedDir := f.String("dockur-shared-dir", "", "host path mounted at /shared")
-	dOemDir := f.String("dockur-oem-dir", "", "host path mounted at /oem")
+	dSharedDir := f.String("dockur-shared-dir", "", "legacy: directory name under the machine dir mounted at /shared")
+	dOemDir := f.String("dockur-oem-dir", "", "legacy: directory name under the machine dir mounted at /oem")
+	dShared := f.Bool("dockur-shared", false, "mount a per-machine shared folder at /shared (guest \\\\host.lan\\Data)")
+	dOemScript := f.String("dockur-oem-script", "", "file whose contents become /oem/install.bat (runs at first boot)")
+	dJobAgent := f.Bool("dockur-job-agent", false, "install the guest agent so job-run works (implies --dockur-shared)")
+	dPublicBind := f.Bool("dockur-public-bind", false, "publish RDP/console on 0.0.0.0 instead of 127.0.0.1")
+	dRdpPort := f.Int("dockur-rdp-port", 0, "fixed host RDP port (default auto)")
+	dConsolePort := f.Int("dockur-console-port", 0, "fixed host web-viewer port (default auto)")
 	dCommand := f.String("dockur-command", "", "post-install COMMAND")
 	dCustomISO := f.String("dockur-custom-iso", "", "custom ISO URL or host path")
 	dEdition := f.String("dockur-edition", "", "dockur EDITION (e.g. core)")
@@ -141,6 +151,16 @@ func createCommand(c client, args []string) {
 	}
 	if dockur := buildDockurOptions(*dUsername, *dPassword, *dHostname, *dLanguage, *dRegion, *dKeyboard, *dProductKey, *dDomain, *dDomainOU, *dSharedDir, *dOemDir, *dCommand, *dCustomISO, *dEdition, *dExtraDisks, *dAudio, *dSecureBoot, *dNoAutologin); dockur != nil {
 		body["dockur"] = dockur
+	}
+	if extra := dockurExtras(*dShared, *dOemScript, *dJobAgent, *dPublicBind, *dRdpPort, *dConsolePort); len(extra) > 0 {
+		d, _ := body["dockur"].(map[string]any)
+		if d == nil {
+			d = map[string]any{}
+		}
+		for k, v := range extra {
+			d[k] = v
+		}
+		body["dockur"] = d
 	}
 	c.do("POST", "/api/v1/machines", body)
 }
@@ -281,9 +301,24 @@ func usage() {
       --dockur-username --dockur-password --dockur-hostname
       --dockur-language --dockur-region --dockur-keyboard
       --dockur-product-key --dockur-domain --dockur-domain-ou
-      --dockur-shared-dir --dockur-oem-dir --dockur-command
+      --dockur-shared --dockur-oem-script FILE --dockur-job-agent
+      --dockur-public-bind --dockur-rdp-port N --dockur-console-port N
+      --dockur-shared-dir --dockur-oem-dir (legacy names under the machine dir)
+      --dockur-command
       --dockur-custom-iso --dockur-edition --dockur-extra-disks 32,64
       --dockur-audio --dockur-secure-boot --dockur-no-autologin
+    A generated password is printed once when --dockur-password is omitted.
+  ready MACHINE_ID [--wait --timeout SEC]          exit 1 until the guest is ready
+  restart MACHINE_ID [--force --no-wait --timeout SEC]
+  logs MACHINE_ID [--tail N]
+  shared-ls MACHINE_ID [DIR]
+  shared-put MACHINE_ID LOCAL REMOTE [--overwrite]
+  shared-get MACHINE_ID REMOTE [-o FILE]
+  shared-rm MACHINE_ID REMOTE
+  job-run MACHINE_ID [--shell cmd|powershell --timeout SEC --name N --env K=V --wait --file F] [COMMAND...]
+  jobs MACHINE_ID
+  job-get|job-cancel|job-logs|job-artifacts MACHINE_ID JOB_ID
+  job-artifact MACHINE_ID JOB_ID PATH [-o FILE]
   get MACHINE_ID
   start MACHINE_ID
   stop MACHINE_ID

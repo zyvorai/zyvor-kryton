@@ -25,6 +25,8 @@ tags:
   - name: settings
   - name: images
   - name: jobs
+  - name: guest
+    description: dockur guest management - readiness, restart, shared folder, script jobs
   - name: events
   - name: health
 paths:
@@ -274,6 +276,190 @@ paths:
         - $ref: '#/components/parameters/Project'
       responses:
         '200': {description: Stop requested}
+  /api/v1/machines/{id}/restart:
+    post:
+      tags: [guest]
+      summary: Restart the guest (dockur only)
+      description: |
+        Graceful by default: `compose stop -t 120` (dockur turns SIGTERM into an ACPI power-button
+        press and waits for Windows to shut down), then `compose start`. `force` kills the container
+        instead. With `wait` (default true) the call blocks until RDP answers (and the guest agent
+        heartbeat is present for `jobAgent` machines) or `timeoutSeconds` (default 300, max 1800).
+        Returns 200 when ready, 202 when not (yet).
+        Emits `io.kryton.machine.restarted` and, when ready, `io.kryton.machine.ready`. Requires Operator.
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                force: {type: boolean}
+                wait: {type: boolean, default: true}
+                timeoutSeconds: {type: integer, minimum: 1, maximum: 1800}
+      responses:
+        '200': {description: "Restarted and ready; body is an object with machine and readiness"}
+        '202': {description: Restarted; guest not ready yet}
+        '501': {description: Provider has no guest management}
+  /api/v1/machines/{id}/ready:
+    get:
+      tags: [guest]
+      summary: Readiness probe (dockur only)
+      description: |
+        200 when the container is running, RDP answers an X.224 negotiation, and (for `jobAgent`
+        machines) the guest agent heartbeat `.kryton/agent-ready` is fresh; 503 with the same body
+        otherwise. While not ready, `install` carries a best-effort phase/percent parsed from dockur's
+        container log. `wait=true` long-polls up to `timeoutSeconds` (default 120, max 900).
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: wait, schema: {type: boolean}}
+        - {in: query, name: timeoutSeconds, schema: {type: integer, minimum: 1, maximum: 900}}
+      responses:
+        '200': {description: Ready, content: {application/json: {schema: {$ref: '#/components/schemas/Readiness'}}}}
+        '503': {description: Not ready, content: {application/json: {schema: {$ref: '#/components/schemas/Readiness'}}}}
+  /api/v1/machines/{id}/logs:
+    get:
+      tags: [guest]
+      summary: dockur container log tail (Operator)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: tail, schema: {type: integer, minimum: 1, maximum: 2000, default: 200}}
+      responses:
+        '200': {description: Plain-text log, content: {text/plain: {schema: {type: string}}}}
+  /api/v1/machines/{id}/shared:
+    get:
+      tags: [guest]
+      summary: List a shared-folder directory (non-recursive)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: path, schema: {type: string}, description: Directory relative to the shared folder root}
+      responses:
+        '200': {description: Entries, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/SharedFile'}}}}}}}
+        '409': {description: Machine was created without dockur.shared}
+  /api/v1/machines/{id}/shared/{path}:
+    parameters:
+      - $ref: '#/components/parameters/MachineID'
+      - $ref: '#/components/parameters/Project'
+      - {in: path, name: path, required: true, schema: {type: string}, description: "Relative path; no .., backslashes, drive letters or the reserved .kryton directory. Symbolic links are never followed."}
+    get:
+      tags: [guest]
+      summary: Download a shared file (served as attachment, application/octet-stream)
+      responses:
+        '200': {description: File bytes (Range supported)}
+        '400': {description: Invalid path}
+        '404': {description: Not found}
+    put:
+      tags: [guest]
+      summary: Upload a shared file (raw request body; Operator)
+      description: Parent directories are created. Fails with 409 if the file exists unless `overwrite=true`; 413 beyond KRYTON_DOCKUR_MAX_UPLOAD_MIB (default 1024 MiB).
+      parameters:
+        - {in: query, name: overwrite, schema: {type: boolean}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream: {schema: {type: string, format: binary}}
+      responses:
+        '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/SharedFile'}}}}
+        '400': {description: Invalid path}
+        '409': {description: Exists}
+        '413': {description: Too large}
+    delete:
+      tags: [guest]
+      summary: Delete a shared file or empty directory (Operator)
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+  /api/v1/machines/{id}/jobs:
+    post:
+      tags: [guest]
+      summary: Submit a script to run in the guest (Operator)
+      description: |
+        Needs a machine created with `dockur.jobAgent: true`, which installs a PowerShell agent through
+        the OEM first-boot script. The agent polls the shared folder, so jobs are picked up once the
+        guest is logged in. Emits `io.kryton.machine.job.submitted` and `io.kryton.machine.job.completed`
+        (data: project, machineId, jobId, state, exitCode, durationSeconds).
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GuestJobSpec'}
+      responses:
+        '202': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/GuestJob'}}}}
+        '400': {description: Invalid job}
+        '409': {description: Machine has no job agent}
+    get:
+      tags: [guest]
+      summary: List guest jobs (newest first, max 200)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: Jobs, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/GuestJob'}}}}}}}
+  /api/v1/machines/{id}/jobs/{jid}:
+    get:
+      tags: [guest]
+      summary: Get a guest job (state, exit code, artifacts)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Job, content: {application/json: {schema: {$ref: '#/components/schemas/GuestJob'}}}}
+        '404': {description: Unknown job}
+  /api/v1/machines/{id}/jobs/{jid}/cancel:
+    post:
+      tags: [guest]
+      summary: Cancel a guest job (Operator)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Job (canceled at once if not started, otherwise cancel requested)}
+  /api/v1/machines/{id}/jobs/{jid}/logs:
+    get:
+      tags: [guest]
+      summary: Job stdout+stderr window
+      description: Headers `X-Log-Size` (total bytes) and `X-Log-Next-Offset` support incremental polling. At most 4 MiB per call.
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: offset, schema: {type: integer, minimum: 0}}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1}}
+      responses:
+        '200': {description: Raw bytes, content: {text/plain: {schema: {type: string}}}}
+  /api/v1/machines/{id}/jobs/{jid}/artifacts:
+    get:
+      tags: [guest]
+      summary: List files the job wrote to $env:KRYTON_ARTIFACTS
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Artifacts, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/SharedFile'}}}}}}}
+  /api/v1/machines/{id}/jobs/{jid}/artifacts/{path}:
+    get:
+      tags: [guest]
+      summary: Download one artifact
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+        - {in: path, name: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File bytes}
+        '404': {description: Not found}
   /api/v1/machines/{id}/snapshot:
     post:
       tags: [machines]
@@ -477,8 +663,29 @@ components:
         autologin: {type: boolean}
         audio: {type: boolean}
         secureBoot: {type: boolean}
-        sharedDir: {type: string, description: Host path mounted at /shared}
-        oemDir: {type: string, description: Host path mounted at /oem}
+        sharedDir:
+          type: string
+          deprecated: true
+          description: Legacy. Single directory name under the machine directory (never a host path; absolute paths and `..` are rejected). Prefer `shared`.
+        oemDir:
+          type: string
+          deprecated: true
+          description: Legacy. Single directory name under the machine directory. Prefer `oemScript`.
+        shared:
+          type: boolean
+          description: Mount <machineDir>/shared at /shared (guest `\\host.lan\Data`, drive Z:); enables the shared-folder API.
+        oemScript:
+          type: string
+          maxLength: 65536
+          description: Written to <machineDir>/oem/install.bat (CRLF) and run by dockur at the end of the first install.
+        jobAgent:
+          type: boolean
+          description: Install the Kryton guest agent via the OEM script so the jobs API works. Implies `shared`. Needs autologin (default).
+        publicBind:
+          type: boolean
+          description: Publish RDP and the web viewer on 0.0.0.0. Default false = 127.0.0.1 only.
+        rdpPort: {type: integer, minimum: 1024, maximum: 65535, description: Fixed host RDP port; 0/omitted = auto. 409 if taken by another machine or in use on the host.}
+        consolePort: {type: integer, minimum: 1024, maximum: 65535, description: Fixed host web-viewer port; 0/omitted = auto.}
         command: {type: string, maxLength: 2048}
         customIso: {type: string}
         edition: {type: string}
@@ -486,6 +693,71 @@ components:
           type: array
           maxItems: 3
           items: {type: integer, minimum: 1, maximum: 65536}
+    Readiness:
+      type: object
+      required: [machineId, ready, containerUp, rdpOpen, agentPresent, agentRequired, checks]
+      properties:
+        machineId: {type: string}
+        ready: {type: boolean}
+        containerUp: {type: boolean}
+        rdpOpen: {type: boolean}
+        agentPresent: {type: boolean}
+        agentRequired: {type: boolean}
+        install:
+          type: object
+          properties:
+            phase: {type: string, enum: [starting, downloading, extracting, building, installing, stopped, unknown, complete]}
+            percent: {type: integer}
+            message: {type: string}
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              ok: {type: boolean}
+              detail: {type: string}
+    SharedFile:
+      type: object
+      properties:
+        path: {type: string}
+        name: {type: string}
+        size: {type: integer, format: int64}
+        isDir: {type: boolean}
+        modTime: {type: string, format: date-time}
+    GuestJobSpec:
+      type: object
+      additionalProperties: false
+      required: [script]
+      properties:
+        name: {type: string, maxLength: 63}
+        shell: {type: string, enum: [cmd, powershell], default: cmd}
+        script: {type: string, maxLength: 65536}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 86400, default: 600}
+        env:
+          type: object
+          maxProperties: 32
+          description: Names match ^[A-Za-z_][A-Za-z0-9_]{0,63}$ and may not start with KRYTON_
+          additionalProperties: {type: string, maxLength: 4096}
+    GuestJob:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        project: {type: string}
+        machineId: {type: string}
+        name: {type: string}
+        shell: {type: string}
+        state: {type: string, enum: [queued, running, succeeded, failed, timed_out, canceled]}
+        exitCode: {type: integer}
+        timeoutSeconds: {type: integer}
+        message: {type: string}
+        submittedAt: {type: string, format: date-time}
+        startedAt: {type: string, format: date-time}
+        finishedAt: {type: string, format: date-time}
+        cancelRequested: {type: boolean}
+        artifacts:
+          type: array
+          items: {$ref: '#/components/schemas/SharedFile'}
     SettingsUpdate:
       type: object
       properties:

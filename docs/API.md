@@ -245,6 +245,22 @@ Linux machines run on the `libvirt` or `kubevirt` provider; see [LINUX-TEMPLATES
 | Delete snapshot | DELETE | `/api/v1/machines/{id}/snapshots/{sid}?project=…` |
 | Delete | DELETE | `/api/v1/machines/{id}?project=…` |
 
+### dockur guest management
+
+Only with `KRYTON_PROVIDER=dockur` (other providers answer `501 UNSUPPORTED`). Full semantics, limits and the guest-agent protocol are in [DOCKUR.md](DOCKUR.md).
+
+| Action | Method | Path |
+|--------|--------|------|
+| Graceful restart | POST | `/api/v1/machines/{id}/restart` |
+| Readiness probe (200/503) | GET | `/api/v1/machines/{id}/ready` |
+| Container log | GET | `/api/v1/machines/{id}/logs` |
+| Shared folder list / get / put / delete | GET, GET, PUT, DELETE | `/api/v1/machines/{id}/shared[/{path}]` |
+| Submit / list guest jobs | POST, GET | `/api/v1/machines/{id}/jobs` |
+| Job status / cancel | GET, POST | `/api/v1/machines/{id}/jobs/{jid}[/cancel]` |
+| Job output / artifacts | GET | `/api/v1/machines/{id}/jobs/{jid}/logs`, `/artifacts[/{path}]` |
+
+The create response carries `generatedPassword` once when no `dockur.password` was supplied. New error codes: `PAYLOAD_TOO_LARGE` (413) and `PRECONDITION_FAILED` (409). New events: `io.kryton.machine.restarted`, `.ready`, `.shared.uploaded`, `.job.submitted`, `.job.completed`.
+
 ---
 
 ## Events
