@@ -30,6 +30,21 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - **Breaking:** `dockur.sharedDir` / `dockur.oemDir` no longer accept host paths (they were an arbitrary host mount); they name a single directory under the machine directory. Use `shared` / `oemScript`. The bundled web UI create form still labels them as host folders.
 - Explicit or auto-allocated RDP/console ports are checked against all machines and the host; a clash is `409 CONFLICT` with the reason. Provider errors `ErrInvalid` (400), `ErrTooLarge` (413) and `ErrPrecondition` (409) are mapped by the API.
 - dockur `start` leaves the machine `starting` until RDP answers; machine state flips to `running` on an RDP handshake rather than on the web viewer responding.
+### Added
+
+- Prometheus `/metrics` expanded: machines by project/provider/state, provider health (`kryton_provider_up`), per-route request counts and latency histograms, rate-limit rejections, auth failures, quota usage/limits, webhook and scheduler counters. Protected by a dedicated `KRYTON_METRICS_TOKEN` (or any API key, scoped to its projects). The Helm ServiceMonitor now presents the token (`metrics.tokenSecret`).
+- Append-only audit log of every mutating API call (and scheduler/TTL actions): `GET /api/v1/audit` with filters (project, actor, action, machine, result, time range) and cursor pagination; optional size-rotated JSONL sink (`KRYTON_AUDIT_FILE`, `KRYTON_AUDIT_MAX_FILE_BYTES`, `KRYTON_AUDIT_MAX_FILES`). `krytonctl audit`.
+- Per-project outbound webhooks (`/api/v1/webhooks…`) for CloudEvents: glob event filters, HMAC-SHA256 signed deliveries (timestamp + body), exponential-backoff retries, delivery log, dead-letter list and redelivery, test deliveries, and an SSRF guard (https only, no private/loopback/link-local/metadata ranges, re-checked at dial time; `KRYTON_WEBHOOK_ALLOW_HOSTS` to allow internal receivers). `krytonctl webhooks`.
+- Scheduled power actions (`/api/v1/schedules…`): cron expressions in any IANA timezone running start, stop, restart or snapshot, with DST-correct wall-clock semantics and a catch-up window that skips stale runs after downtime. `krytonctl schedules`.
+- Machine TTL hygiene: `PUT /api/v1/machines/{id}/ttl` to extend or clear a TTL, `KRYTON_DEFAULT_TTL_MINUTES`, and an `io.kryton.machine.expiring` warning event (`KRYTON_TTL_WARN`). Automatic expiries are audited. `krytonctl ttl`.
+- Per-project quotas on machines, vCPU, memory and disk (`/api/v1/quotas…`, `KRYTON_QUOTA_MAX_*`, `KRYTON_QUOTAS_FILE`), enforced at create with `QUOTA_EXCEEDED`: 409 when current usage is the obstacle, 403 when a single machine can never fit. `krytonctl quota`.
+- Per-project API-key roles: `grants` in `keys.json` (and `X-Kryton-Grants` in proxy mode) give viewer/operator/admin per project; `krytonctl new-key` generates an entry.
+- New docs: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md); AUTH, API, DEPLOYMENT, GA and ARCHITECTURE updated; OpenAPI extended (all three copies in sync).
+
+### Changed
+
+- **`/metrics` is no longer anonymous when API auth is enabled.** Set `KRYTON_METRICS_TOKEN` (and `metrics.tokenSecret` in Helm) for Prometheus, or `KRYTON_METRICS_PUBLIC=true` to keep the old behaviour. With `KRYTON_AUTH_MODE=disabled` it stays open.
+- `role` is optional in `keys.json`: a key that lists `projects` without a `role` is treated as `admin`, matching how every existing key behaved. Existing files need no change.
 
 ## [1.3.0] - 2026-10-17
 

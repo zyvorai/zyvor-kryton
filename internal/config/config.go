@@ -51,6 +51,28 @@ type Config struct {
 	// disables rate limiting entirely.
 	RateLimitRPS   int
 	RateLimitBurst int
+	// MetricsToken, when set, is the dedicated bearer token Prometheus
+	// presents to /metrics (KRYTON_METRICS_TOKEN or KRYTON_METRICS_TOKEN_FILE).
+	// MetricsPublic keeps /metrics unauthenticated even with auth enabled.
+	MetricsToken  string
+	MetricsPublic bool
+	// Audit log (KRYTON_AUDIT_*).
+	AuditFile         string
+	AuditMaxEntries   int
+	AuditMaxFileBytes int64
+	AuditMaxFiles     int
+	// Outbound per-project webhooks (KRYTON_WEBHOOKS_FILE,
+	// KRYTON_WEBHOOK_ALLOW_HOSTS).
+	WebhooksFile      string
+	WebhookAllowHosts []string
+	// Scheduled power actions and TTL hygiene.
+	SchedulesFile     string
+	DefaultTTLMinutes int
+	TTLWarn           time.Duration
+	// Per-project quotas: QuotasFile holds per-project overrides; the
+	// QuotaDefault* limits apply to projects without one (0 = unlimited).
+	QuotasFile     string
+	QuotaDefault   QuotaDefaults
 	Kubernetes     Kubernetes
 	TLS            TLS
 	Dockur         Dockur
@@ -58,6 +80,14 @@ type Config struct {
 	LibvirtDataDir string
 	LinuxImageDir  string
 	LibvirtNetwork string
+}
+
+// QuotaDefaults are the fallback per-project limits from the environment.
+type QuotaDefaults struct {
+	MaxMachines  int
+	MaxVCPU      int
+	MaxMemoryMiB int
+	MaxDiskGiB   int
 }
 
 // Dockur configures the dockur provider: which container runtime to
@@ -128,6 +158,23 @@ func Load() (Config, error) {
 		ShutdownTimeout:    durationEnv("KRYTON_SHUTDOWN_TIMEOUT", 15*time.Second),
 		RateLimitRPS:       intEnv("KRYTON_RATE_LIMIT_RPS", 0),
 		RateLimitBurst:     intEnv("KRYTON_RATE_LIMIT_BURST", 0),
+		MetricsPublic:      boolEnv("KRYTON_METRICS_PUBLIC", false),
+		AuditFile:          os.Getenv("KRYTON_AUDIT_FILE"),
+		AuditMaxEntries:    intEnv("KRYTON_AUDIT_MAX_ENTRIES", 10000),
+		AuditMaxFileBytes:  int64(intEnv("KRYTON_AUDIT_MAX_FILE_BYTES", 10<<20)),
+		AuditMaxFiles:      intEnv("KRYTON_AUDIT_MAX_FILES", 5),
+		WebhooksFile:       os.Getenv("KRYTON_WEBHOOKS_FILE"),
+		WebhookAllowHosts:  splitCSV(os.Getenv("KRYTON_WEBHOOK_ALLOW_HOSTS")),
+		SchedulesFile:      os.Getenv("KRYTON_SCHEDULES_FILE"),
+		DefaultTTLMinutes:  intEnv("KRYTON_DEFAULT_TTL_MINUTES", 0),
+		TTLWarn:            durationEnv("KRYTON_TTL_WARN", 15*time.Minute),
+		QuotasFile:         os.Getenv("KRYTON_QUOTAS_FILE"),
+		QuotaDefault: QuotaDefaults{
+			MaxMachines:  intEnv("KRYTON_QUOTA_MAX_MACHINES", 0),
+			MaxVCPU:      intEnv("KRYTON_QUOTA_MAX_VCPU", 0),
+			MaxMemoryMiB: intEnv("KRYTON_QUOTA_MAX_MEMORY_MIB", 0),
+			MaxDiskGiB:   intEnv("KRYTON_QUOTA_MAX_DISK_GIB", 0),
+		},
 		Kubernetes: Kubernetes{
 			Endpoint:           os.Getenv("KRYTON_KUBERNETES_ENDPOINT"),
 			BearerToken:        os.Getenv("KRYTON_KUBERNETES_BEARER_TOKEN"),
@@ -156,6 +203,15 @@ func Load() (Config, error) {
 		if err := cfg.resolveKubernetes(); err != nil {
 			return Config{}, err
 		}
+	}
+	cfg.MetricsToken = strings.TrimSpace(os.Getenv("KRYTON_METRICS_TOKEN"))
+	if f := strings.TrimSpace(os.Getenv("KRYTON_METRICS_TOKEN_FILE")); f != "" && cfg.MetricsToken == "" {
+		// #nosec G304 -- operator-configured secret file
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return Config{}, fmt.Errorf("read KRYTON_METRICS_TOKEN_FILE: %w", err)
+		}
+		cfg.MetricsToken = strings.TrimSpace(string(b))
 	}
 	if cfg.LabTokenFile == "" && cfg.APIKeysFile != "" {
 		cfg.LabTokenFile = filepath.Join(filepath.Dir(cfg.APIKeysFile), "lab.token")
@@ -226,6 +282,15 @@ func (c Config) Validate() error {
 		if c.AuthMode != "apikey" {
 			return errors.New("KRYTON_LAB_AUTO_AUTH requires KRYTON_AUTH_MODE=apikey")
 		}
+	}
+	if c.DefaultTTLMinutes < 0 || c.DefaultTTLMinutes > 43200 {
+		return errors.New("KRYTON_DEFAULT_TTL_MINUTES must be between 0 and 43200")
+	}
+	if q := c.QuotaDefault; q.MaxMachines < 0 || q.MaxVCPU < 0 || q.MaxMemoryMiB < 0 || q.MaxDiskGiB < 0 {
+		return errors.New("KRYTON_QUOTA_MAX_* values must not be negative")
+	}
+	if c.AuditMaxEntries < 0 || c.AuditMaxFileBytes < 0 || c.AuditMaxFiles < 0 {
+		return errors.New("KRYTON_AUDIT_MAX_* values must not be negative")
 	}
 	if (c.TLS.CertFile == "") != (c.TLS.KeyFile == "") {
 		return errors.New("both KRYTON_TLS_CERT_FILE and KRYTON_TLS_KEY_FILE must be set together")

@@ -48,6 +48,7 @@ type Bus struct {
 	history       []Event
 	maxHistory    int
 	subs          map[chan Event]struct{}
+	sinks         []func(Event)
 	webhook       string
 	webhookSecret string
 	store         *fileStore
@@ -100,7 +101,11 @@ func (b *Bus) Publish(ctx context.Context, eventType, subject string, data map[s
 		}
 	}
 	webhook := b.webhook
+	sinks := b.sinks
 	b.mu.Unlock()
+	for _, fn := range sinks {
+		fn(e)
+	}
 	if b.store != nil {
 		if err := b.store.append(e); err != nil && b.log != nil {
 			b.log.Warn("event persist failed", "error", err)
@@ -110,6 +115,14 @@ func (b *Bus) Publish(ctx context.Context, eventType, subject string, data map[s
 		b.deliverWebhook(ctx, webhook, e)
 	}
 	return e
+}
+
+// AddSink registers fn to be called synchronously with every published
+// Event (used by the per-project webhook dispatcher). fn must not block.
+func (b *Bus) AddSink(fn func(Event)) {
+	b.mu.Lock()
+	b.sinks = append(b.sinks, fn)
+	b.mu.Unlock()
 }
 
 // SetWebhookURL updates the webhook target live; pass "" to disable delivery.

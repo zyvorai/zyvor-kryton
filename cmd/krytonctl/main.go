@@ -44,6 +44,10 @@ func main() {
 		fmt.Println(auth.HashToken(os.Args[2]))
 		return
 	}
+	if os.Args[1] == "new-key" {
+		newKeyCommand(os.Args[2:])
+		return
+	}
 	if os.Args[1] == "generate-token" {
 		var b [32]byte
 		if _, err := rand.Read(b[:]); err != nil {
@@ -72,6 +76,21 @@ func main() {
 			os.Exit(2)
 		}
 		c.do("PUT", "/api/v1/storage/config", map[string]any{"storageClass": os.Args[2]})
+	case "metrics":
+		if t := os.Getenv("KRYTON_METRICS_TOKEN"); t != "" {
+			c.token = t
+		}
+		c.do("GET", "/metrics", nil)
+	case "audit":
+		auditCommand(c, os.Args[2:])
+	case "webhooks":
+		webhooksCommand(c, os.Args[2:])
+	case "schedules":
+		schedulesCommand(c, os.Args[2:])
+	case "ttl":
+		ttlCommand(c, os.Args[2:])
+	case "quota":
+		quotaCommand(c, os.Args[2:])
 	case "get", "start", "stop", "delete", "snapshot", "snapshots", "restore", "delete-snapshot":
 		machineCommand(c, os.Args[1], os.Args[2:])
 	case "create":
@@ -327,6 +346,21 @@ func usage() {
   restore MACHINE_ID SNAPSHOT_ID
   delete-snapshot MACHINE_ID SNAPSHOT_ID
   delete MACHINE_ID
+  ttl MACHINE_ID MINUTES [--project P]      (0 = never expire)
+  schedules list [--machine ID]
+  schedules create MACHINE_ID --action start|stop|restart|snapshot --cron "0 19 * * mon-fri" [--tz Europe/Berlin] [--snapshot-name N]
+  schedules get|enable|disable|delete SCHEDULE_ID
+  quota list | get PROJECT | clear PROJECT
+  quota set PROJECT [--machines N --vcpu N --memory MiB --disk GiB]   (0 = unlimited)
+  webhooks list | get ID | delete ID | test ID
+  webhooks create URL [--event PATTERN ...] [--description TEXT]
+  webhooks update ID [--url U] [--enabled true|false] [--event PATTERN ...]
+  webhooks deliveries [--status pending|retrying|succeeded|dead] [--subscription ID]
+  webhooks dead-letters | redeliver DELIVERY_ID
+  audit [--project P --actor A --action machine.create --machine ID --result success|denied|error
+         --since RFC3339 --until RFC3339 --limit N --cursor C]
+  metrics                                   (uses KRYTON_METRICS_TOKEN if set, else KRYTON_TOKEN)
+  new-key --name N (--role viewer|operator|admin --project p1,p2 | --grant proj=role ...)
   images
   events
   capabilities
@@ -336,5 +370,5 @@ func usage() {
   generate-token
   hash-token TOKEN
 
-Environment: KRYTON_URL, KRYTON_TOKEN, KRYTON_PROJECT`)
+Environment: KRYTON_URL, KRYTON_TOKEN, KRYTON_PROJECT, KRYTON_METRICS_TOKEN`)
 }

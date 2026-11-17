@@ -19,8 +19,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/zyvorai/kryton/internal/audit"
 	"github.com/zyvorai/kryton/internal/auth"
 	"github.com/zyvorai/kryton/internal/catalog"
 	"github.com/zyvorai/kryton/internal/events"
@@ -31,8 +33,11 @@ import (
 	"github.com/zyvorai/kryton/internal/metrics"
 	"github.com/zyvorai/kryton/internal/model"
 	"github.com/zyvorai/kryton/internal/provider"
+	"github.com/zyvorai/kryton/internal/quota"
+	"github.com/zyvorai/kryton/internal/schedule"
 	"github.com/zyvorai/kryton/internal/settings"
 	"github.com/zyvorai/kryton/internal/storage"
+	"github.com/zyvorai/kryton/internal/webhooks"
 )
 
 // Config is everything Server needs, assembled once at startup in
@@ -78,6 +83,17 @@ type Config struct {
 	RateLimitBurst int
 	// MaxUploadBytes caps one shared-folder upload (default 1 GiB).
 	MaxUploadBytes int64
+	// Operations & observability (all optional; nil/zero disables).
+	Audit     *audit.Store
+	Quotas    *quota.Store
+	Webhooks  *webhooks.Manager
+	Schedules *schedule.Store
+	// MetricsToken is a dedicated bearer token for /metrics; MetricsPublic
+	// leaves /metrics unauthenticated even when API auth is on.
+	MetricsToken  string
+	MetricsPublic bool
+	// DefaultTTLMinutes is applied to creates that omit ttlMinutes (0 = none).
+	DefaultTTLMinutes int
 }
 
 // Server is the assembled HTTP API: a single provider.Provider plus the
@@ -118,6 +134,15 @@ type Server struct {
 	corsOrigins        []string
 	consoleTickets     *consoleTickets
 	maxUpload          int64
+	audit              *audit.Store
+	quotas             *quota.Store
+	webhooks           *webhooks.Manager
+	schedules          *schedule.Store
+	metricsToken       string
+	metricsPublic      bool
+	defaultTTL         int
+	createMu           sync.Mutex
+	scrape             scrapeCache
 }
 
 type createRequest struct {
@@ -150,7 +175,9 @@ type APIError struct {
 // New assembles a Server from cfg. It does not start listening; call
 // Handler and pass the result to an http.Server.
 func New(cfg Config) *Server {
-	return &Server{
+	s := &Server{
+		audit: cfg.Audit, quotas: cfg.Quotas, webhooks: cfg.Webhooks, schedules: cfg.Schedules,
+		metricsToken: cfg.MetricsToken, metricsPublic: cfg.MetricsPublic, defaultTTL: cfg.DefaultTTLMinutes,
 		p: cfg.Provider, catalog: cfg.Catalog, events: cfg.Events, auth: cfg.Auth, metrics: cfg.Metrics, web: cfg.Web,
 		projects: cfg.Projects, defaultProject: cfg.DefaultProject, authMode: cfg.AuthMode,
 		dockurDataDir: cfg.DockurDataDir, dockurRuntime: cfg.DockurRuntime, imageNamespace: cfg.ImageNamespace,
@@ -162,6 +189,10 @@ func New(cfg Config) *Server {
 		consoleTickets: newConsoleTickets(),
 		maxUpload:      cfg.MaxUploadBytes,
 	}
+	if s.metrics != nil && s.p != nil {
+		s.metrics.AddCollector(s.collectMetrics)
+	}
+	return s
 }
 
 // Handler builds the full request pipeline: request-ID tagging, access
@@ -221,6 +252,27 @@ func (s *Server) Handler() http.Handler {
 	apiMux.HandleFunc("GET /api/v1/machines/{id}/snapshots", s.listSnapshots)
 	apiMux.HandleFunc("POST /api/v1/machines/{id}/snapshots/{sid}/restore", s.restoreSnapshot)
 	apiMux.HandleFunc("DELETE /api/v1/machines/{id}/snapshots/{sid}", s.deleteSnapshot)
+	apiMux.HandleFunc("PUT /api/v1/machines/{id}/ttl", s.setMachineTTL)
+	apiMux.HandleFunc("GET /api/v1/audit", s.listAudit)
+	apiMux.HandleFunc("GET /api/v1/webhooks", s.listWebhooks)
+	apiMux.HandleFunc("POST /api/v1/webhooks", s.createWebhook)
+	apiMux.HandleFunc("GET /api/v1/webhooks/deliveries", s.listWebhookDeliveries)
+	apiMux.HandleFunc("GET /api/v1/webhooks/dead-letters", s.listWebhookDeadLetters)
+	apiMux.HandleFunc("GET /api/v1/webhooks/deliveries/{id}", s.getWebhookDelivery)
+	apiMux.HandleFunc("POST /api/v1/webhooks/deliveries/{id}/redeliver", s.redeliverWebhook)
+	apiMux.HandleFunc("GET /api/v1/webhooks/{id}", s.getWebhook)
+	apiMux.HandleFunc("PUT /api/v1/webhooks/{id}", s.updateWebhook)
+	apiMux.HandleFunc("DELETE /api/v1/webhooks/{id}", s.deleteWebhook)
+	apiMux.HandleFunc("POST /api/v1/webhooks/{id}/test", s.testWebhook)
+	apiMux.HandleFunc("GET /api/v1/schedules", s.listSchedules)
+	apiMux.HandleFunc("POST /api/v1/schedules", s.createSchedule)
+	apiMux.HandleFunc("GET /api/v1/schedules/{id}", s.getSchedule)
+	apiMux.HandleFunc("PUT /api/v1/schedules/{id}", s.updateSchedule)
+	apiMux.HandleFunc("DELETE /api/v1/schedules/{id}", s.deleteSchedule)
+	apiMux.HandleFunc("GET /api/v1/quotas", s.listQuotas)
+	apiMux.HandleFunc("GET /api/v1/quotas/{project}", s.getQuota)
+	apiMux.HandleFunc("PUT /api/v1/quotas/{project}", s.putQuota)
+	apiMux.HandleFunc("DELETE /api/v1/quotas/{project}", s.deleteQuota)
 	apiMux.HandleFunc("GET /api/v1/events", s.listEvents)
 	apiMux.HandleFunc("GET /api/v1/events/stream", s.streamEvents)
 
@@ -229,14 +281,14 @@ func (s *Server) Handler() http.Handler {
 		jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	root.HandleFunc("GET /readyz", s.ready)
-	root.HandleFunc("GET /metrics", s.metrics.Handler)
+	root.HandleFunc("GET /metrics", s.serveMetrics)
 	root.HandleFunc("GET /openapi.yaml", s.serveOpenAPI)
 	root.HandleFunc("GET /api/openapi.yaml", s.serveOpenAPI)
 	// Exact match only — a trailing-slash pattern would steal /api/v1/*.
 	root.HandleFunc("GET /api/v1", s.apiDiscovery)
 	root.HandleFunc("GET /api/v1/lab/bootstrap", s.labBootstrap)
-	api := s.rateLimit(apiMux)
-	root.Handle("/api/", s.consoleTicketAuth(s.auth.Middleware(api), api))
+	api := s.auditActor(s.rateLimit(apiMux))
+	root.Handle("/api/", s.auditMiddleware(s.consoleTicketAuth(s.auth.Middleware(api), api)))
 	root.Handle("/", s.staticHandler())
 	return s.requestID(s.accessLog(s.cors(s.security(s.recoverer(root)))))
 }
@@ -312,6 +364,9 @@ func (s *Server) listMachines(w http.ResponseWriter, r *http.Request) {
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 500 {
 		limit = v
 	}
+	for i := range ms {
+		s.applyExpiry(&ms[i])
+	}
 	page, next, err := paginateMachines(ms, limit, r.URL.Query().Get("cursor"))
 	if err != nil {
 		s.badRequest(w, r, "invalid cursor")
@@ -368,6 +423,7 @@ func (s *Server) getMachine(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
+	s.applyExpiry(m)
 	jsonResponse(w, http.StatusOK, m)
 }
 
@@ -384,9 +440,13 @@ func (s *Server) createMachine(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, r, "project is not configured")
 		return
 	}
+	auditNote(r.Context(), req.Project, "")
 	if !auth.Can(auth.FromContext(r.Context()), req.Project, auth.Operator) {
 		s.forbidden(w, r)
 		return
+	}
+	if req.TTLMinutes == 0 && s.defaultTTL > 0 {
+		req.TTLMinutes = s.defaultTTL
 	}
 	if err := model.ValidateProject(req.Project); err != nil {
 		s.badRequest(w, r, err.Error())
@@ -427,11 +487,17 @@ func (s *Server) createMachine(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	unlock, ok := s.enforceQuota(w, r, req.Project, req.MachineSpec)
+	if !ok {
+		return
+	}
 	m, err := s.p.Create(r.Context(), req.Project, req.MachineSpec)
+	unlock()
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
+	auditNote(r.Context(), req.Project, m.ID)
 	s.metrics.Operation("create")
 	s.events.Publish(r.Context(), "io.kryton.machine.created", "machines/"+m.ID, map[string]any{"project": m.Project, "machineId": m.ID, "name": m.Spec.Name, "state": m.State, "consoleUrl": m.ConsoleURL})
 	if m.State == model.StateProvisioning {
@@ -482,6 +548,9 @@ func (s *Server) deleteMachine(w http.ResponseWriter, r *http.Request) {
 	if err := s.p.Delete(r.Context(), project, machineID); err != nil {
 		s.writeErr(w, r, err)
 		return
+	}
+	if s.schedules != nil {
+		s.schedules.ForgetMachine(project, machineID)
 	}
 	s.metrics.Operation("delete")
 	s.events.Publish(r.Context(), "io.kryton.machine.deleted", "machines/"+machineID, map[string]any{"project": project, "machineId": machineID, "name": m.Spec.Name})
@@ -628,6 +697,11 @@ func (s *Server) requireProject(w http.ResponseWriter, r *http.Request, role aut
 	project := r.URL.Query().Get("project")
 	if project == "" {
 		project = s.defaultProject
+	}
+	if strings.Contains(r.URL.Path, "/machines/") {
+		auditNote(r.Context(), project, r.PathValue("id"))
+	} else {
+		auditNote(r.Context(), project, "")
 	}
 	if !s.projectConfigured(project) {
 		s.badRequest(w, r, "project is not configured")

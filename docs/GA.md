@@ -20,6 +20,8 @@ Production Kryton is the **kubevirt** provider behind Helm, hashed API keys, and
 | Images | CI publishes `ghcr.io/zyvorai/kryton` on `main` |
 | Events | Dashboard subscribes to `GET /api/v1/events/stream` with the same bearer token as REST |
 | Auth | Never `disabled` on kubevirt; store SHA-256 digests in `keys.json` |
+| Observability | Prometheus `/metrics` with a dedicated scrape token and Helm ServiceMonitor wiring; append-only audit log; per-project signed webhooks — see [OBSERVABILITY.md](OBSERVABILITY.md) |
+| Governance | Per-project API-key roles, per-project quotas, TTL defaults and scheduled power actions — single-replica only: schedules, webhook deliveries and the audit window are in-process state (see [ARCHITECTURE.md](ARCHITECTURE.md)) |
 
 ## Operator checklist
 

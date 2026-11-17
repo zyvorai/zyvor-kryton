@@ -36,6 +36,12 @@ The two storage overlays are meant to be layered on top of `values.yaml` or `val
 | `reconcileInterval` | `30s` | TTL-expiry sweep interval |
 | `rateLimit.rps` / `.burst` | `0` / `0` | Per-caller `/api/*` token bucket; `0` disables rate limiting |
 | `serviceMonitor.enabled` | `false` | Renders a Prometheus Operator `ServiceMonitor` scraping `/metrics`; requires the Prometheus Operator CRDs in-cluster |
+| `metrics.tokenSecret.name` / `.key` | `""` / `token` | Secret holding the `/metrics` scrape token; wired into `KRYTON_METRICS_TOKEN` and the ServiceMonitor's `authorization`. See [docs/OBSERVABILITY.md](../../../docs/OBSERVABILITY.md) |
+| `metrics.public` | `false` | Leave `/metrics` unauthenticated even with auth on (`KRYTON_METRICS_PUBLIC`) — only behind a NetworkPolicy |
+| `audit.file` / `.maxFileBytes` / `.maxFiles` | `""` / `10485760` / `5` | Optional JSONL audit sink with size rotation (the log is always queryable at `GET /api/v1/audit`) |
+| `webhookAllowHosts` | `[]` | Hosts/CIDRs outbound webhooks may reach despite being private |
+| `defaultTTLMinutes` | `0` | TTL for machines created without `ttlMinutes` (lab hygiene) |
+| `quota.maxMachines` / `.maxVCPU` / `.maxMemoryMiB` / `.maxDiskGiB` | `0` | Default per-project quota (`0` = unlimited) |
 | `podDisruptionBudget.enabled` | `false` | Renders a `PodDisruptionBudget`; only meaningful once `replicaCount > 1` is safe — see the note below |
 | `ingress.*` | disabled | Standard `networking.k8s.io/v1` Ingress; only used when `ingress.enabled: true` |
 | `service.type` / `service.nodePort` | `ClusterIP` / `0` | Set `NodePort` + a port for lab access without an Ingress controller |

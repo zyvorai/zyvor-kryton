@@ -17,4 +17,13 @@ spec:
     - port: http
       path: /metrics
       interval: {{ .Values.serviceMonitor.interval }}
+      {{- if .Values.metrics.tokenSecret.name }}
+      # /metrics requires a bearer token unless auth is disabled or
+      # metrics.public=true; scrape with the dedicated metrics token.
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ .Values.metrics.tokenSecret.name }}
+          key: {{ .Values.metrics.tokenSecret.key }}
+      {{- end }}
 {{- end }}

@@ -31,6 +31,7 @@ From [CHANGELOG.md](CHANGELOG.md) (1.1.0 and 1.2.0):
 
 | | |
 |---|---|
+| **Operations and observability** | Prometheus `/metrics` (machines by state, provider health, latency histograms, quotas) behind a metrics token; append-only audit log with `GET /api/v1/audit`; HMAC-signed per-project webhooks with retries, dead letters and an SSRF guard; cron-scheduled start/stop/restart/snapshot with timezones; machine TTL extend/default; per-project quotas; per-project API-key roles. See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md). |
 | **API rate limiting** | `KRYTON_RATE_LIMIT_RPS` / `KRYTON_RATE_LIMIT_BURST`: a per-caller token bucket keyed by API-key name, returning `429` / `RATE_LIMITED`. Off by default. |
 | **Pagination** | `GET /api/v1/machines?limit=&cursor=` with `nextCursor`, matching the events API. |
 | **Helm for operations** | `serviceMonitor` and `podDisruptionBudget` templates, plus a chart README for every values key and overlay. |

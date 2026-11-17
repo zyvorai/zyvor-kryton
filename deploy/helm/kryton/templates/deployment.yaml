@@ -53,6 +53,59 @@ spec:
               value: /var/lib/kryton/storage.json
             - name: KRYTON_SETTINGS_CONFIG_FILE
               value: /var/lib/kryton/settings.json
+            # Operations state (audit log, webhooks, schedules, quotas) lives
+            # on the same writable "state" volume.
+            - name: KRYTON_WEBHOOKS_FILE
+              value: /var/lib/kryton/webhooks.json
+            - name: KRYTON_SCHEDULES_FILE
+              value: /var/lib/kryton/schedules.json
+            - name: KRYTON_QUOTAS_FILE
+              value: /var/lib/kryton/quotas.json
+            {{- if .Values.audit.file }}
+            - name: KRYTON_AUDIT_FILE
+              value: {{ .Values.audit.file | quote }}
+            - name: KRYTON_AUDIT_MAX_FILE_BYTES
+              value: {{ .Values.audit.maxFileBytes | int64 | quote }}
+            - name: KRYTON_AUDIT_MAX_FILES
+              value: {{ .Values.audit.maxFiles | quote }}
+            {{- end }}
+            {{- if .Values.webhookAllowHosts }}
+            - name: KRYTON_WEBHOOK_ALLOW_HOSTS
+              value: {{ join "," .Values.webhookAllowHosts | quote }}
+            {{- end }}
+            {{- if gt (.Values.defaultTTLMinutes | int) 0 }}
+            - name: KRYTON_DEFAULT_TTL_MINUTES
+              value: {{ .Values.defaultTTLMinutes | quote }}
+            {{- end }}
+            {{- with .Values.quota }}
+            {{- if gt (.maxMachines | int) 0 }}
+            - name: KRYTON_QUOTA_MAX_MACHINES
+              value: {{ .maxMachines | quote }}
+            {{- end }}
+            {{- if gt (.maxVCPU | int) 0 }}
+            - name: KRYTON_QUOTA_MAX_VCPU
+              value: {{ .maxVCPU | quote }}
+            {{- end }}
+            {{- if gt (.maxMemoryMiB | int) 0 }}
+            - name: KRYTON_QUOTA_MAX_MEMORY_MIB
+              value: {{ .maxMemoryMiB | quote }}
+            {{- end }}
+            {{- if gt (.maxDiskGiB | int) 0 }}
+            - name: KRYTON_QUOTA_MAX_DISK_GIB
+              value: {{ .maxDiskGiB | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.metrics.tokenSecret.name }}
+            - name: KRYTON_METRICS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.metrics.tokenSecret.name }}
+                  key: {{ .Values.metrics.tokenSecret.key }}
+            {{- end }}
+            {{- if .Values.metrics.public }}
+            - name: KRYTON_METRICS_PUBLIC
+              value: "true"
+            {{- end }}
             - name: KRYTON_AUTH_MODE
               value: {{ .Values.auth.mode | quote }}
             - name: KRYTON_TRUST_PROXY
