@@ -2,6 +2,10 @@
 
 Narrative release write-ups. For the flat, Keep-a-Changelog-style version index, see [CHANGELOG.md](CHANGELOG.md).
 
+## 1.4.2
+
+CI-only fixes on top of 1.4.1 (lint and gosec findings). No runtime or API changes. Use 1.4.2 in place of 1.4.1.
+
 ## 1.4.1
 
 Console and docs update on top of 1.4.0; no API or behaviour changes.

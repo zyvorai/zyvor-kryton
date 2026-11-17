@@ -6,6 +6,12 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-11-18
+
+### Fixed
+
+- CI: staticcheck S1021 in the audit test and gosec G703/G304 findings on operator-chosen file paths in `krytonctl` and config loading (annotated with `#nosec` and a reason). No runtime behaviour change; 1.4.1 shipped with a red CI run, 1.4.2 is the first green tag of this line.
+
 ## [1.4.1] - 2026-11-17
 
 ### Changed
