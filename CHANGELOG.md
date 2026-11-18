@@ -6,6 +6,8 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-11-18
+
 ### Fixed
 
 - Deleting a dockur machine could leave its container running: `compose down` ran on the request context and its error was ignored, so a client that disconnected during the graceful shutdown deleted the record and data but not the guest. The teardown now survives a client disconnect, and a failed teardown keeps the machine so the delete can be retried.

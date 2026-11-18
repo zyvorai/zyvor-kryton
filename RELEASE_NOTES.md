@@ -2,6 +2,10 @@
 
 Narrative release write-ups. For the flat, Keep-a-Changelog-style version index, see [CHANGELOG.md](CHANGELOG.md).
 
+## 1.4.4
+
+- **Delete:** deleting a dockur machine could leave its container running when the client disconnected during the graceful shutdown (the record and data were removed, the guest was not). The teardown now survives a client disconnect, and a failed teardown keeps the machine so the delete can be retried. Deleting a Windows guest takes a couple of minutes; use a client timeout of at least 5 minutes.
+
 ## 1.4.3
 
 Fixes dockur guest jobs that stayed `queued` until the guest rebooted.

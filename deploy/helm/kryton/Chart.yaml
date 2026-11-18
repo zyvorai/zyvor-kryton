@@ -1,6 +1,6 @@
 apiVersion: v2
 name: kryton
 description: Kryton — Windows virtualization control plane.
-version: 1.4.3
-appVersion: "1.4.3"
+version: 1.4.4
+appVersion: "1.4.4"
 type: application
