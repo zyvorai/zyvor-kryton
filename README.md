@@ -29,7 +29,7 @@
 
 ## What's new
 
-From [CHANGELOG.md](CHANGELOG.md) (1.1.0 to 1.4.2):
+From [CHANGELOG.md](CHANGELOG.md) (1.1.0 to 1.4.3):
 
 | | |
 |---|---|

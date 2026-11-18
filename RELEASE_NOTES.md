@@ -2,6 +2,14 @@
 
 Narrative release write-ups. For the flat, Keep-a-Changelog-style version index, see [CHANGELOG.md](CHANGELOG.md).
 
+## 1.4.3
+
+Fixes dockur guest jobs that stayed `queued` until the guest rebooted.
+
+- **Jobs stuck queued:** job folders are created on the host outside Samba, so the guest's SMB client served a stale listing of `.kryton/jobs`. The agent now creates and deletes a scratch file in that directory before each poll, which refreshes the listing. Verified on a real Windows 11 guest: fresh jobs start in 2 to 10 s. **Machines created before 1.4.3 keep the old agent**; the manual upgrade steps are in `docs/DOCKUR.md`.
+- **Restart:** `POST /machines/{id}/restart` could leave the guest powered off if the client disconnected between stop and start; both steps now survive a client disconnect.
+- **Docs:** job scripts should use `\\host.lan\Data`; `Z:` is not mapped in the agent session.
+
 ## 1.4.2
 
 CI-only fixes on top of 1.4.1 (lint and gosec findings). No runtime or API changes. Use 1.4.2 in place of 1.4.1.

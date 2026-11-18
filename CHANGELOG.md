@@ -6,6 +6,8 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-11-18
+
 ### Fixed
 
 - dockur guest jobs stayed `queued` until the guest rebooted. Jobs are created on the host outside Samba, so the guest's SMB client served a stale listing of `.kryton/jobs` (directory leases). The agent now creates and deletes a scratch file in that directory before each poll, which refreshes the listing; verified on a real Windows 11 guest (fresh jobs start in 2 to 10 s). Machines created earlier keep the old agent; see `docs/DOCKUR.md`.
