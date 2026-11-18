@@ -406,7 +406,15 @@ func (p *Provider) Delete(ctx context.Context, project, machineID string) error 
 		return provider.ErrNotFound
 	}
 	dir := p.machineDir(project, machineID)
-	_ = p.compose(ctx, dir, "down", "--remove-orphans")
+	// Tear the guest down on a context detached from the request: a client that
+	// gives up during the (slow, graceful) shutdown must not leave a running
+	// container behind after the record and its data are gone. If the teardown
+	// itself fails, keep the machine so the delete can be retried.
+	if _, err := os.Stat(filepath.Join(dir, "compose.yml")); err == nil {
+		if err := p.compose(context.WithoutCancel(ctx), dir, "down", "--remove-orphans"); err != nil {
+			return fmt.Errorf("dockur: tearing down %s: %w", machineID, err)
+		}
+	}
 	_ = os.RemoveAll(dir)
 	delete(p.machines[project], machineID)
 	delete(p.ports, machineID)

@@ -812,3 +812,26 @@ func TestAgentRefreshesJobsDirectory(t *testing.T) {
 		t.Fatal("Sync-JobsDir must run before the jobs listing")
 	}
 }
+
+// Deleting with an already-cancelled request context must still tear the guest
+// down; otherwise the record and data vanish while the container keeps running.
+func TestDeleteTearsDownEvenIfRequestCancelled(t *testing.T) {
+	p, f, _, _, _ := jobProvider(t)
+	m := mustCreate(t, p, "cancelled-delete", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := p.Delete(ctx, m.Project, m.ID); err != nil {
+		t.Fatalf("delete with cancelled request context: %v", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var down bool
+	for _, c := range f.calls {
+		if strings.Contains(strings.Join(c, " "), " down ") {
+			down = true
+		}
+	}
+	if !down {
+		t.Fatal("machine record deleted but `compose down` never ran")
+	}
+}
