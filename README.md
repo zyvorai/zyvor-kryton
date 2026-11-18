@@ -23,6 +23,8 @@
 
 </div>
 
+[Client overview (PDF)](docs/Kryton-Client-Overview.pdf)
+
 ---
 
 ## What's new
