@@ -89,12 +89,28 @@ function Invoke-KrytonJob($root, $dir) {
     Write-Json $status @{ state = $final; exitCode = $code; startedAt = $started; finishedAt = (Get-Date).ToUniversalTime().ToString('o') }
 }
 
+# Jobs are created on the host filesystem, outside Samba. Samba (smb3 directory
+# leases) therefore never tells the guest's SMB client that the jobs directory
+# changed, and the client keeps serving its cached listing indefinitely, so new
+# jobs would stay "queued" until the next reboot. A create+delete of a scratch
+# file through the share invalidates the client's own cache for that directory,
+# and the following listing is read from the server. Measured on Windows 11
+# against dockur's Samba 4.22: without this the listing was stale for minutes.
+function Sync-JobsDir($jobs) {
+    $f = Join-Path $jobs '.poll'
+    try {
+        [IO.File]::WriteAllText($f, 'x')
+        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+    } catch { }
+}
+
 while ($true) {
     $root = Get-KrytonRoot
     if ($root) {
         Send-Beat $root
         $jobs = Join-Path $root 'jobs'
         if (Test-Path -LiteralPath $jobs) {
+            Sync-JobsDir $jobs
             foreach ($d in Get-ChildItem -LiteralPath $jobs -Directory -ErrorAction SilentlyContinue) {
                 if ((Test-Path -LiteralPath (Join-Path $d.FullName 'job.json')) -and -not (Test-Path -LiteralPath (Join-Path $d.FullName 'status.json'))) {
                     Invoke-KrytonJob $root $d.FullName

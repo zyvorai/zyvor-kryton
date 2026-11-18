@@ -68,11 +68,15 @@ func (p *Provider) Restart(ctx context.Context, project, machineID string, opts 
 	if opts.Force {
 		stop = []string{"kill"}
 	}
-	if err := p.compose(ctx, mi.dir, stop...); err != nil {
+	// The stop/start pair must not be split by a client disconnect: a request
+	// cancelled between them would leave the guest powered off. Only the
+	// optional readiness wait below follows the caller's context.
+	opCtx := context.WithoutCancel(ctx)
+	if err := p.compose(opCtx, mi.dir, stop...); err != nil {
 		p.setState(project, machineID, func(m *model.Machine) { m.State = model.StateFailed; m.Message = err.Error() })
 		return nil, nil, err
 	}
-	if err := p.compose(ctx, mi.dir, "start"); err != nil {
+	if err := p.compose(opCtx, mi.dir, "start"); err != nil {
 		p.setState(project, machineID, func(m *model.Machine) { m.State = model.StateFailed; m.Message = err.Error() })
 		return nil, nil, err
 	}

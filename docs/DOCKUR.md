@@ -127,7 +127,7 @@ Open the console URL in a browser. RDP is published on the host port starting at
 | Field | dockur env / volume | Notes |
 |-------|---------------------|-------|
 | `username` / `password` | `USERNAME` / `PASSWORD` | Password is write-only (redacted on GET); generated when omitted |
-| `shared` | `<machineDir>/shared` → `/shared` | Guest `\\host.lan\Data`, desktop **Shared** / drive `Z:`; enables the shared-folder API |
+| `shared` | `<machineDir>/shared` → `/shared` | Guest `\\host.lan\Data` (the **Shared** desktop shortcut; a `Z:` drive is not guaranteed to be mapped in job sessions, so scripts should use the UNC path); enables the shared-folder API |
 | `oemScript` | `<machineDir>/oem/install.bat` → `/oem` | Batch script run by dockur at the end of the first install (max 64 KiB) |
 | `jobAgent` | agent in `/oem` | Installs the Kryton guest agent; enables the jobs API; implies `shared` |
 | `publicBind` | port publishing address | `false` (default) = `127.0.0.1`, `true` = `0.0.0.0` |
@@ -228,7 +228,7 @@ krytonctl job-artifact <id> <jobId> out/app.zip -o app.zip
 
 ### Shared folder
 
-`shared: true` creates `<KRYTON_DOCKUR_DATA_DIR>/<project>/<id>/shared` and mounts it at `/shared`; inside Windows it is `\\host.lan\Data` (drive `Z:`).
+`shared: true` creates `<KRYTON_DOCKUR_DATA_DIR>/<project>/<id>/shared` and mounts it at `/shared`; inside Windows it is `\\host.lan\Data`. Use that UNC path in job scripts: `Z:` is not mapped in the agent's session.
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -323,3 +323,9 @@ Dockur provisioning emits `io.kryton.machine.install.started` when unattended se
 - FreeRDP RemoteApp / Linux `.desktop` integration (WinPodX product surface)
 - Reverse-open of Linux apps inside Windows
 - Shipping Microsoft ISOs from Kryton itself
+
+### Why the agent writes a scratch file before every poll
+
+Job directories are created by Kryton on the host, outside Samba. dockur's Samba (4.22, `smb3 directory leases = Auto`) therefore never tells the guest's SMB client that `.kryton/jobs` changed, and the client keeps serving a cached listing: new jobs stayed `queued` until the guest rebooted (measured: minutes to indefinitely; the heartbeat kept beating, so `ready` looked healthy). Plain re-listing, `cmd dir`, a fresh PSDrive and `net use /delete` did not help (the last also hangs while the job's own log file holds the connection). Creating and deleting a scratch file (`jobs\.poll`) through the share invalidates the client's cache for that directory, and the next listing is current. From the release after 1.4.2 the agent does this on every 2 s poll; fresh jobs now start within a few seconds.
+
+The agent is installed at machine creation. A machine created before that release keeps the old agent until it is reinstalled: copy the new `kryton-agent.ps1` over `%ProgramData%\Kryton\agent.ps1` from a job (it works right after a reboot, when the listing is still fresh) and reboot once.

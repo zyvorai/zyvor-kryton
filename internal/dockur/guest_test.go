@@ -32,7 +32,10 @@ type fakeDocker struct {
 	busy    map[int]bool // host ports reported in use
 }
 
-func (f *fakeDocker) run(_ context.Context, _ string, name string, args ...string) ([]byte, error) {
+func (f *fakeDocker) run(ctx context.Context, _ string, name string, args ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil { // like exec.CommandContext: a cancelled context never runs the command
+		return nil, err
+	}
 	f.mu.Lock()
 	f.calls = append(f.calls, append([]string{name}, args...))
 	f.mu.Unlock()
@@ -772,5 +775,40 @@ func TestStatePersistsPortBind(t *testing.T) {
 	b, _ := os.ReadFile(p.statePath())
 	if err := json.Unmarshal(b, &s); err != nil || s.Ports[m.ID].Bind != "127.0.0.1" {
 		t.Fatalf("bind not persisted: %v %s", err, b)
+	}
+}
+
+// A client that disconnects mid-restart must not leave the guest powered off:
+// stop and start are issued on a context detached from the request.
+func TestRestartSurvivesCancelledRequest(t *testing.T) {
+	p, f, _, _, _ := jobProvider(t)
+	m := mustCreate(t, p, "cancelled-restart", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := p.Restart(ctx, m.Project, m.ID, provider.RestartOptions{}); err != nil {
+		t.Fatalf("restart with cancelled request context: %v", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var started bool
+	for _, c := range f.calls {
+		if strings.HasSuffix(strings.Join(c, " "), " start") {
+			started = true
+		}
+	}
+	if !started {
+		t.Fatal("guest was stopped but never started again")
+	}
+}
+
+// The agent must refresh the guest SMB client's cached view of the jobs
+// directory (jobs are created on the host, outside Samba), or new jobs stay
+// queued until the next reboot.
+func TestAgentRefreshesJobsDirectory(t *testing.T) {
+	if !strings.Contains(agentScript, "function Sync-JobsDir") || !strings.Contains(agentScript, "Sync-JobsDir $jobs") {
+		t.Fatal("agent.ps1 no longer refreshes the jobs directory before listing it")
+	}
+	if strings.Index(agentScript, "Sync-JobsDir $jobs") > strings.Index(agentScript, "Get-ChildItem -LiteralPath $jobs") {
+		t.Fatal("Sync-JobsDir must run before the jobs listing")
 	}
 }

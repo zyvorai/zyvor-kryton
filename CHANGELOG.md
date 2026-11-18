@@ -6,6 +6,15 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+### Fixed
+
+- dockur guest jobs stayed `queued` until the guest rebooted. Jobs are created on the host outside Samba, so the guest's SMB client served a stale listing of `.kryton/jobs` (directory leases). The agent now creates and deletes a scratch file in that directory before each poll, which refreshes the listing; verified on a real Windows 11 guest (fresh jobs start in 2 to 10 s). Machines created earlier keep the old agent; see `docs/DOCKUR.md`.
+- `POST /machines/{id}/restart` could leave the guest powered off if the client disconnected between the stop and the start; both now run on a context detached from the request (the readiness wait still honours it).
+
+### Docs
+
+- `docs/DOCKUR.md`: job scripts should use `\\host.lan\Data`; `Z:` is not mapped in the agent session.
+
 ## [1.4.2] - 2026-11-18
 
 ### Fixed
