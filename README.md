@@ -124,7 +124,7 @@ Full walkthroughs: **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)**.
 Requires **Go 1.27.1+**.
 
 ```bash
-git clone https://github.com/zyvorai/zyvor-kryton.git && cd kryton
+git clone https://github.com/zyvorai/zyvor-kryton.git && cd zyvor-kryton
 make demo
 ```
 
