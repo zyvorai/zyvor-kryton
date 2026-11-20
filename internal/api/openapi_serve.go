@@ -1,0 +1,164 @@
+// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+
+package api
+
+import (
+	_ "embed"
+	"net/http"
+	"strings"
+)
+
+//go:embed openapi.yaml
+var openAPISpec []byte
+
+type apiCatalogAuth struct {
+	Mode    string   `json:"mode"`
+	Schemes []string `json:"schemes"`
+	Header  string   `json:"header,omitempty"`
+}
+
+type apiEndpoint struct {
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	Group       string `json:"group"`
+	Description string `json:"description"`
+}
+
+func (s *Server) serveOpenAPI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Access-Control-Allow-Origin", corsAllowOrigin(r, s.corsOrigins))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(openAPISpec)
+}
+
+func (s *Server) apiDiscovery(w http.ResponseWriter, r *http.Request) {
+	provider := ""
+	if s.p != nil {
+		provider = s.p.Name()
+	}
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"name":        "kryton",
+		"version":     "1.0.0",
+		"description": "Kryton Windows virtualization control plane",
+		"openapi":     "/openapi.yaml",
+		"basePath":    "/api/v1",
+		// Public cluster / login identity — safe before auth so the Apple
+		// Store login chapters can confirm which control plane you hit.
+		"provider": provider,
+		"product":  "Kryton",
+		"auth": apiCatalogAuth{
+			Mode:    s.authMode,
+			Schemes: []string{"bearer", "proxy"},
+			Header:  "Authorization",
+		},
+		"health": map[string]string{
+			"live":    "/healthz",
+			"ready":   "/readyz",
+			"metrics": "/metrics",
+		},
+		"endpoints": allAPIEndpoints(),
+	})
+}
+
+func allAPIEndpoints() []apiEndpoint {
+	return []apiEndpoint{
+		{Method: "GET", Path: "/api/v1", Group: "meta", Description: "API discovery"},
+		{Method: "GET", Path: "/api/v1/me", Group: "meta", Description: "Current identity"},
+		{Method: "GET", Path: "/api/v1/projects", Group: "meta", Description: "Accessible projects"},
+		{Method: "GET", Path: "/api/v1/capabilities", Group: "meta", Description: "Provider capabilities"},
+		{Method: "GET", Path: "/api/v1/doctor", Group: "meta", Description: "Environment diagnostics"},
+		{Method: "GET", Path: "/api/v1/settings", Group: "settings", Description: "Runtime settings"},
+		{Method: "PUT", Path: "/api/v1/settings", Group: "settings", Description: "Update runtime settings"},
+		{Method: "POST", Path: "/api/v1/settings/test", Group: "settings", Description: "Test control-plane connection"},
+		{Method: "POST", Path: "/api/v1/integrations/atlas/test", Group: "integrations", Description: "Test Atlas storage control plane"},
+		{Method: "GET", Path: "/api/v1/storage", Group: "storage", Description: "Storage inventory"},
+		{Method: "GET", Path: "/api/v1/storage/config", Group: "storage", Description: "Default StorageClass"},
+		{Method: "PUT", Path: "/api/v1/storage/config", Group: "storage", Description: "Set default StorageClass"},
+		{Method: "GET", Path: "/api/v1/storage/setup", Group: "storage", Description: "Storage install status"},
+		{Method: "POST", Path: "/api/v1/storage/setup", Group: "storage", Description: "Install Longhorn or Rook"},
+		{Method: "GET", Path: "/api/v1/images", Group: "images", Description: "Image catalog"},
+		{Method: "GET", Path: "/api/v1/golden", Group: "images", Description: "Golden builds"},
+		{Method: "POST", Path: "/api/v1/golden", Group: "images", Description: "Start golden build"},
+		{Method: "GET", Path: "/api/v1/golden/{id}", Group: "images", Description: "Golden build"},
+		{Method: "GET", Path: "/api/v1/golden/{id}/passport", Group: "images", Description: "guestkit Cutover Passport"},
+		{Method: "POST", Path: "/api/v1/golden/{id}/bootstrap", Group: "images", Description: "Publish to CDI"},
+		{Method: "GET", Path: "/api/v1/jobs", Group: "jobs", Description: "List jobs"},
+		{Method: "GET", Path: "/api/v1/jobs/{id}", Group: "jobs", Description: "Get job"},
+		{Method: "GET", Path: "/api/v1/summary", Group: "machines", Description: "Project summary"},
+		{Method: "GET", Path: "/api/v1/machines", Group: "machines", Description: "List machines"},
+		{Method: "POST", Path: "/api/v1/machines", Group: "machines", Description: "Create machine"},
+		{Method: "GET", Path: "/api/v1/machines/{id}", Group: "machines", Description: "Get machine"},
+		{Method: "DELETE", Path: "/api/v1/machines/{id}", Group: "machines", Description: "Delete machine"},
+		{Method: "POST", Path: "/api/v1/machines/{id}/start", Group: "machines", Description: "Start machine"},
+		{Method: "POST", Path: "/api/v1/machines/{id}/stop", Group: "machines", Description: "Stop machine"},
+		{Method: "POST", Path: "/api/v1/machines/{id}/restart", Group: "guest", Description: "Graceful (ACPI) restart, optionally wait for RDP"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/ready", Group: "guest", Description: "Readiness probe (container, RDP, agent, install progress)"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/logs", Group: "guest", Description: "Container log tail"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/shared", Group: "guest", Description: "List shared folder"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/shared/{path}", Group: "guest", Description: "Download shared file"},
+		{Method: "PUT", Path: "/api/v1/machines/{id}/shared/{path}", Group: "guest", Description: "Upload shared file"},
+		{Method: "DELETE", Path: "/api/v1/machines/{id}/shared/{path}", Group: "guest", Description: "Delete shared file"},
+		{Method: "POST", Path: "/api/v1/machines/{id}/jobs", Group: "guest", Description: "Submit guest job"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/jobs", Group: "guest", Description: "List guest jobs"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/jobs/{jid}", Group: "guest", Description: "Get guest job"},
+		{Method: "POST", Path: "/api/v1/machines/{id}/jobs/{jid}/cancel", Group: "guest", Description: "Cancel guest job"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/jobs/{jid}/logs", Group: "guest", Description: "Guest job output"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/jobs/{jid}/artifacts", Group: "guest", Description: "List job artifacts"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/jobs/{jid}/artifacts/{path}", Group: "guest", Description: "Download job artifact"},
+		{Method: "POST", Path: "/api/v1/machines/{id}/snapshot", Group: "machines", Description: "Create snapshot"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/snapshots", Group: "machines", Description: "List snapshots"},
+		{Method: "POST", Path: "/api/v1/machines/{id}/snapshots/{sid}/restore", Group: "machines", Description: "Restore snapshot"},
+		{Method: "DELETE", Path: "/api/v1/machines/{id}/snapshots/{sid}", Group: "machines", Description: "Delete snapshot"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/console", Group: "machines", Description: "Web console"},
+		{Method: "GET", Path: "/api/v1/machines/{id}/vnc", Group: "machines", Description: "VNC proxy"},
+		{Method: "PUT", Path: "/api/v1/machines/{id}/ttl", Group: "machines", Description: "Extend or clear a machine's TTL"},
+		{Method: "GET", Path: "/api/v1/audit", Group: "operations", Description: "Query the audit log"},
+		{Method: "GET", Path: "/api/v1/webhooks", Group: "webhooks", Description: "List webhook subscriptions"},
+		{Method: "POST", Path: "/api/v1/webhooks", Group: "webhooks", Description: "Create webhook subscription"},
+		{Method: "GET", Path: "/api/v1/webhooks/{id}", Group: "webhooks", Description: "Get webhook subscription"},
+		{Method: "PUT", Path: "/api/v1/webhooks/{id}", Group: "webhooks", Description: "Update webhook subscription"},
+		{Method: "DELETE", Path: "/api/v1/webhooks/{id}", Group: "webhooks", Description: "Delete webhook subscription"},
+		{Method: "POST", Path: "/api/v1/webhooks/{id}/test", Group: "webhooks", Description: "Send a test delivery"},
+		{Method: "GET", Path: "/api/v1/webhooks/deliveries", Group: "webhooks", Description: "Webhook delivery log"},
+		{Method: "GET", Path: "/api/v1/webhooks/deliveries/{id}", Group: "webhooks", Description: "Webhook delivery detail"},
+		{Method: "POST", Path: "/api/v1/webhooks/deliveries/{id}/redeliver", Group: "webhooks", Description: "Retry a delivery"},
+		{Method: "GET", Path: "/api/v1/webhooks/dead-letters", Group: "webhooks", Description: "Dead-letter deliveries"},
+		{Method: "GET", Path: "/api/v1/schedules", Group: "schedules", Description: "List scheduled actions"},
+		{Method: "POST", Path: "/api/v1/schedules", Group: "schedules", Description: "Create scheduled action"},
+		{Method: "GET", Path: "/api/v1/schedules/{id}", Group: "schedules", Description: "Get scheduled action"},
+		{Method: "PUT", Path: "/api/v1/schedules/{id}", Group: "schedules", Description: "Update scheduled action"},
+		{Method: "DELETE", Path: "/api/v1/schedules/{id}", Group: "schedules", Description: "Delete scheduled action"},
+		{Method: "GET", Path: "/api/v1/quotas", Group: "quotas", Description: "Project quotas and usage"},
+		{Method: "GET", Path: "/api/v1/quotas/{project}", Group: "quotas", Description: "One project's quota and usage"},
+		{Method: "PUT", Path: "/api/v1/quotas/{project}", Group: "quotas", Description: "Set a project quota"},
+		{Method: "DELETE", Path: "/api/v1/quotas/{project}", Group: "quotas", Description: "Remove a project quota override"},
+		{Method: "GET", Path: "/api/v1/events", Group: "events", Description: "Event history"},
+		{Method: "GET", Path: "/api/v1/events/stream", Group: "events", Description: "SSE event stream"},
+		{Method: "GET", Path: "/healthz", Group: "health", Description: "Liveness"},
+		{Method: "GET", Path: "/readyz", Group: "health", Description: "Readiness"},
+		{Method: "GET", Path: "/metrics", Group: "health", Description: "Prometheus metrics"},
+		{Method: "GET", Path: "/openapi.yaml", Group: "meta", Description: "OpenAPI 3.1 spec"},
+	}
+}
+
+func corsAllowOrigin(r *http.Request, allowed []string) string {
+	if len(allowed) == 0 {
+		return ""
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	for _, a := range allowed {
+		a = strings.TrimSpace(a)
+		if a == "*" {
+			if origin != "" {
+				return origin
+			}
+			return "*"
+		}
+		if origin != "" && strings.EqualFold(a, origin) {
+			return origin
+		}
+	}
+	return ""
+}

@@ -1,0 +1,173 @@
+# Do NOT set replicaCount > 1 today. internal/reconciler/ttl.go has no
+# leader election — every replica would independently expire the same
+# machines — and internal/events/events.go's history/SSE fan-out is
+# purely in-process, so replicas would show different event streams to
+# different clients. See docs/ARCHITECTURE.md's "Single-replica today"
+# note. Fix both before scaling out.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/zyvorai/kryton
+  # CI (.github/workflows/ci.yml) only pushes "latest" and "sha-<hash>"
+  # tags on merge to main — there is no version-tagged image today, so
+  # pin to a specific sha-* tag for anything beyond quick evaluation.
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+provider: kubevirt
+projects: [default]
+defaultProject: default
+namespacePrefix: ""
+imageNamespace: kryton-images
+# Prefer rook-ceph-block (production RBD) or longhorn (lab). See docs/STORAGE.md
+storageClass: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  create: true
+  clusterWide: true
+
+auth:
+  mode: apikey
+  existingSecret: kryton-auth
+  trustProxy: false
+  allowInsecure: false
+
+eventWebhookURL: ""
+corsOrigins: []
+reconcileInterval: 30s
+
+rateLimit:
+  # requests/sec per caller (API-key name, or remote address when auth is
+  # disabled); 0 disables rate limiting. See README.md's Configuration table.
+  rps: 0
+  burst: 0
+
+# /metrics access. With auth enabled, /metrics needs a bearer token: create a
+# Secret holding the scrape token and reference it here; the Deployment gets
+# it as KRYTON_METRICS_TOKEN and the ServiceMonitor presents it. Set
+# public=true only if the endpoint is already protected by a NetworkPolicy.
+#   kubectl -n kryton create secret generic kryton-metrics --from-literal=token="$(krytonctl generate-token)"
+metrics:
+  tokenSecret:
+    name: ""
+    key: token
+  public: false
+
+# Append-only audit log of mutating API calls. Entries are always queryable via
+# GET /api/v1/audit; set file to also write JSONL (rotated by size).
+audit:
+  file: ""            # e.g. /var/lib/kryton/audit.jsonl
+  maxFileBytes: 10485760
+  maxFiles: 5
+
+# Hosts/CIDRs outbound webhooks may target despite being private (SSRF guard).
+webhookAllowHosts: []
+
+# TTL (minutes) applied to machines created without ttlMinutes; 0 = none.
+defaultTTLMinutes: 0
+
+# Default per-project quota (0 = unlimited). Override per project with
+# PUT /api/v1/quotas/{project}.
+quota:
+  maxMachines: 0
+  maxVCPU: 0
+  maxMemoryMiB: 0
+  maxDiskGiB: 0
+
+# Requires the Prometheus Operator CRDs installed in-cluster. Off by
+# default so the chart installs cleanly without them.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+# Only meaningful once replicaCount > 1 is safe — see the note above
+# replicaCount. Off by default; the template is included so it's ready
+# to enable once that's fixed.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: kryton.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+service:
+  type: ClusterIP
+  # Service port (ClusterIP / Ingress backend).
+  port: 80
+  # Container listen port — also sets KRYTON_ADDR=:<targetPort>.
+  targetPort: 8080
+  nodePort: 0
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 96Mi
+  limits:
+    cpu: 1000m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  # Explicit numeric UID/GID (distroless nonroot's actual identity):
+  # some kubelet/containerd versions cannot verify runAsNonRoot against
+  # an image's named "nonroot" USER without a numeric value here.
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsUser: 65532
+  capabilities:
+    drop: ["ALL"]
+
+networkPolicy:
+  enabled: false
+
+tolerations: []
+affinity: {}
+nodeSelector: {}
+
+images:
+  - id: windows-server-2025
+    name: Windows Server 2025
+    version: "2025"
+    family: windows-server
+    description: Enterprise Windows Server image reference for CDI DataSource provisioning.
+    minCpu: 2
+    minMemoryMiB: 4096
+    defaultDiskGiB: 80
+    tags: [server, enterprise]
+  - id: windows-server-2022
+    name: Windows Server 2022
+    version: "2022"
+    family: windows-server
+    description: Stable Windows Server image for application and infrastructure workloads.
+    minCpu: 2
+    minMemoryMiB: 4096
+    defaultDiskGiB: 80
+    tags: [server, lts]
+  - id: windows-11-enterprise
+    name: Windows 11 Enterprise
+    version: 24H2
+    family: windows-desktop
+    description: Enterprise Windows desktop image for developer and test workspaces.
+    minCpu: 4
+    minMemoryMiB: 8192
+    defaultDiskGiB: 96
+    tags: [desktop, developer]

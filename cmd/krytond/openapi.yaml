@@ -1,0 +1,1298 @@
+# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+openapi: 3.1.0
+info:
+  title: Kryton API
+  version: 1.1.0
+  description: |
+    Kryton Windows virtualization control plane. All machine operations are project-scoped.
+    Authenticate with `Authorization: Bearer <token>` (apikey mode) or trusted proxy headers.
+    OpenAPI is served at `/openapi.yaml` and discovery at `GET /api/v1`.
+  contact:
+    name: Zyvor
+    url: https://zyvor.dev
+  license:
+    name: Zyvor Production License v1.0
+    url: https://github.com/zyvorai/zyvor-kryton/blob/main/LICENSE
+servers:
+  - url: /
+    description: Relative to Kryton base URL
+security:
+  - bearerAuth: []
+tags:
+  - name: meta
+  - name: machines
+  - name: storage
+  - name: settings
+  - name: images
+  - name: jobs
+  - name: guest
+    description: dockur guest management - readiness, restart, shared folder, script jobs
+  - name: events
+  - name: audit
+  - name: webhooks
+  - name: schedules
+  - name: quotas
+  - name: health
+paths:
+  /api/v1:
+    get:
+      tags: [meta]
+      summary: API discovery catalog
+      security: []
+      responses:
+        '200':
+          description: Machine-readable list of endpoints and auth modes
+  /api/v1/me:
+    get:
+      tags: [meta]
+      summary: Current identity
+      responses:
+        '200': {description: Authenticated principal}
+  /api/v1/projects:
+    get:
+      tags: [meta]
+      summary: Accessible projects
+      responses:
+        '200': {description: Project list}
+  /api/v1/capabilities:
+    get:
+      tags: [meta]
+      summary: Provider capabilities
+      responses:
+        '200': {description: Capability flags}
+  /api/v1/doctor:
+    get:
+      tags: [meta]
+      summary: Environment diagnostics
+      responses:
+        '200': {description: Healthy}
+        '503': {description: One or more checks failed}
+  /api/v1/settings:
+    get:
+      tags: [settings]
+      summary: Runtime and system settings
+      responses:
+        '200': {description: Settings view}
+    put:
+      tags: [settings]
+      summary: Update runtime settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsUpdate'
+      responses:
+        '200': {description: Updated settings}
+        '400': {description: Invalid request}
+        '403': {description: Forbidden}
+  /api/v1/settings/test:
+    post:
+      tags: [settings]
+      summary: Test control-plane connectivity
+      responses:
+        '200': {description: All probes passed}
+        '503': {description: One or more probes failed}
+  /api/v1/integrations/atlas/test:
+    post:
+      tags: [integrations]
+      summary: Test Atlas storage control plane integration
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtlasConfig'
+      responses:
+        '200': {description: Atlas reachable}
+        '503': {description: Atlas probes failed}
+  /api/v1/storage:
+    get:
+      tags: [storage]
+      summary: Cluster StorageClasses and VolumeSnapshotClasses
+      responses:
+        '200': {description: Storage inventory}
+  /api/v1/storage/config:
+    get:
+      tags: [storage]
+      summary: Active default StorageClass
+      responses:
+        '200': {description: Storage config}
+    put:
+      tags: [storage]
+      summary: Set default StorageClass for new VM disks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                storageClass: {type: string, example: rook-ceph-block}
+      responses:
+        '200': {description: Updated}
+        '400': {description: Invalid class}
+  /api/v1/storage/setup:
+    get:
+      tags: [storage]
+      summary: Storage install job status and logs
+      responses:
+        '200': {description: Setup status}
+    post:
+      tags: [storage]
+      summary: Install Longhorn or Rook Ceph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StorageSetup'
+      responses:
+        '202': {description: Setup started}
+        '400': {description: Invalid request}
+  /api/v1/images:
+    get:
+      tags: [images]
+      summary: Image catalog
+      responses:
+        '200': {description: Images}
+  /api/v1/golden:
+    get:
+      tags: [images]
+      summary: Golden image builds
+      responses:
+        '200': {description: Builds}
+    post:
+      tags: [images]
+      summary: Start golden image build
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                imageId: {type: string}
+                version: {type: string}
+                auto: {type: boolean}
+      responses:
+        '202': {description: Build started}
+  /api/v1/golden/{id}:
+    get:
+      tags: [images]
+      parameters:
+        - $ref: '#/components/parameters/GoldenID'
+      responses:
+        '200': {description: Build}
+        '404': {description: Not found}
+  /api/v1/golden/{id}/passport:
+    get:
+      tags: [images]
+      summary: guestkit Cutover Passport (boot/migration evidence) for this build
+      parameters:
+        - $ref: '#/components/parameters/GoldenID'
+      responses:
+        '200': {description: Passport JSON}
+        '404': {description: No passport recorded for this build}
+  /api/v1/golden/{id}/bootstrap:
+    post:
+      tags: [images]
+      parameters:
+        - $ref: '#/components/parameters/GoldenID'
+      responses:
+        '202': {description: CDI bootstrap started}
+        '400': {description: Build not ready}
+  /api/v1/jobs:
+    get:
+      tags: [jobs]
+      summary: Active and recent jobs
+      responses:
+        '200': {description: Jobs}
+  /api/v1/jobs/{id}:
+    get:
+      tags: [jobs]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Job}
+        '404': {description: Not found}
+  /api/v1/summary:
+    get:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: Project summary}
+  /api/v1/machines:
+    get:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - in: query
+          name: limit
+          description: Max items per page (1-500).
+          schema: {type: integer, default: 50}
+        - in: query
+          name: cursor
+          description: Opaque page cursor from a previous response's nextCursor.
+          schema: {type: string}
+      responses:
+        '200': {description: Machines}
+    post:
+      tags: [machines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMachine'
+      responses:
+        '201': {description: Machine created}
+        '400': {description: Invalid request}
+        '403':
+          description: 'Forbidden, or code QUOTA_EXCEEDED when this single machine is larger than a project quota limit'
+        '409':
+          description: 'Name conflict, or code QUOTA_EXCEEDED when the project would exceed its quota (delete something or raise the quota)'
+        '429': {description: Rate limited}
+  /api/v1/machines/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MachineID'
+      - $ref: '#/components/parameters/Project'
+    get:
+      tags: [machines]
+      responses:
+        '200': {description: Machine}
+        '404': {description: Not found}
+    delete:
+      tags: [machines]
+      responses:
+        '204': {description: Deleted}
+  /api/v1/machines/{id}/start:
+    post:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: Start requested}
+  /api/v1/machines/{id}/stop:
+    post:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: Stop requested}
+  /api/v1/machines/{id}/restart:
+    post:
+      tags: [guest]
+      summary: Restart the guest (dockur only)
+      description: |
+        Graceful by default: `compose stop -t 120` (dockur turns SIGTERM into an ACPI power-button
+        press and waits for Windows to shut down), then `compose start`. `force` kills the container
+        instead. With `wait` (default true) the call blocks until RDP answers (and the guest agent
+        heartbeat is present for `jobAgent` machines) or `timeoutSeconds` (default 300, max 1800).
+        Returns 200 when ready, 202 when not (yet).
+        Emits `io.kryton.machine.restarted` and, when ready, `io.kryton.machine.ready`. Requires Operator.
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                force: {type: boolean}
+                wait: {type: boolean, default: true}
+                timeoutSeconds: {type: integer, minimum: 1, maximum: 1800}
+      responses:
+        '200': {description: "Restarted and ready; body is an object with machine and readiness"}
+        '202': {description: Restarted; guest not ready yet}
+        '501': {description: Provider has no guest management}
+  /api/v1/machines/{id}/ready:
+    get:
+      tags: [guest]
+      summary: Readiness probe (dockur only)
+      description: |
+        200 when the container is running, RDP answers an X.224 negotiation, and (for `jobAgent`
+        machines) the guest agent heartbeat `.kryton/agent-ready` is fresh; 503 with the same body
+        otherwise. While not ready, `install` carries a best-effort phase/percent parsed from dockur's
+        container log. `wait=true` long-polls up to `timeoutSeconds` (default 120, max 900).
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: wait, schema: {type: boolean}}
+        - {in: query, name: timeoutSeconds, schema: {type: integer, minimum: 1, maximum: 900}}
+      responses:
+        '200': {description: Ready, content: {application/json: {schema: {$ref: '#/components/schemas/Readiness'}}}}
+        '503': {description: Not ready, content: {application/json: {schema: {$ref: '#/components/schemas/Readiness'}}}}
+  /api/v1/machines/{id}/logs:
+    get:
+      tags: [guest]
+      summary: dockur container log tail (Operator)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: tail, schema: {type: integer, minimum: 1, maximum: 2000, default: 200}}
+      responses:
+        '200': {description: Plain-text log, content: {text/plain: {schema: {type: string}}}}
+  /api/v1/machines/{id}/shared:
+    get:
+      tags: [guest]
+      summary: List a shared-folder directory (non-recursive)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: path, schema: {type: string}, description: Directory relative to the shared folder root}
+      responses:
+        '200': {description: Entries, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/SharedFile'}}}}}}}
+        '409': {description: Machine was created without dockur.shared}
+  /api/v1/machines/{id}/shared/{path}:
+    parameters:
+      - $ref: '#/components/parameters/MachineID'
+      - $ref: '#/components/parameters/Project'
+      - {in: path, name: path, required: true, schema: {type: string}, description: "Relative path; no .., backslashes, drive letters or the reserved .kryton directory. Symbolic links are never followed."}
+    get:
+      tags: [guest]
+      summary: Download a shared file (served as attachment, application/octet-stream)
+      responses:
+        '200': {description: File bytes (Range supported)}
+        '400': {description: Invalid path}
+        '404': {description: Not found}
+    put:
+      tags: [guest]
+      summary: Upload a shared file (raw request body; Operator)
+      description: Parent directories are created. Fails with 409 if the file exists unless `overwrite=true`; 413 beyond KRYTON_DOCKUR_MAX_UPLOAD_MIB (default 1024 MiB).
+      parameters:
+        - {in: query, name: overwrite, schema: {type: boolean}}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream: {schema: {type: string, format: binary}}
+      responses:
+        '201': {description: Stored, content: {application/json: {schema: {$ref: '#/components/schemas/SharedFile'}}}}
+        '400': {description: Invalid path}
+        '409': {description: Exists}
+        '413': {description: Too large}
+    delete:
+      tags: [guest]
+      summary: Delete a shared file or empty directory (Operator)
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+  /api/v1/machines/{id}/jobs:
+    post:
+      tags: [guest]
+      summary: Submit a script to run in the guest (Operator)
+      description: |
+        Needs a machine created with `dockur.jobAgent: true`, which installs a PowerShell agent through
+        the OEM first-boot script. The agent polls the shared folder, so jobs are picked up once the
+        guest is logged in. Emits `io.kryton.machine.job.submitted` and `io.kryton.machine.job.completed`
+        (data: project, machineId, jobId, state, exitCode, durationSeconds).
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GuestJobSpec'}
+      responses:
+        '202': {description: Queued, content: {application/json: {schema: {$ref: '#/components/schemas/GuestJob'}}}}
+        '400': {description: Invalid job}
+        '409': {description: Machine has no job agent}
+    get:
+      tags: [guest]
+      summary: List guest jobs (newest first, max 200)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: Jobs, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/GuestJob'}}}}}}}
+  /api/v1/machines/{id}/jobs/{jid}:
+    get:
+      tags: [guest]
+      summary: Get a guest job (state, exit code, artifacts)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Job, content: {application/json: {schema: {$ref: '#/components/schemas/GuestJob'}}}}
+        '404': {description: Unknown job}
+  /api/v1/machines/{id}/jobs/{jid}/cancel:
+    post:
+      tags: [guest]
+      summary: Cancel a guest job (Operator)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Job (canceled at once if not started, otherwise cancel requested)}
+  /api/v1/machines/{id}/jobs/{jid}/logs:
+    get:
+      tags: [guest]
+      summary: Job stdout+stderr window
+      description: Headers `X-Log-Size` (total bytes) and `X-Log-Next-Offset` support incremental polling. At most 4 MiB per call.
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: offset, schema: {type: integer, minimum: 0}}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1}}
+      responses:
+        '200': {description: Raw bytes, content: {text/plain: {schema: {type: string}}}}
+  /api/v1/machines/{id}/jobs/{jid}/artifacts:
+    get:
+      tags: [guest]
+      summary: List files the job wrote to $env:KRYTON_ARTIFACTS
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Artifacts, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/SharedFile'}}}}}}}
+  /api/v1/machines/{id}/jobs/{jid}/artifacts/{path}:
+    get:
+      tags: [guest]
+      summary: Download one artifact
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+        - {in: path, name: jid, required: true, schema: {type: string, format: uuid}}
+        - {in: path, name: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: File bytes}
+        '404': {description: Not found}
+  /api/v1/machines/{id}/snapshot:
+    post:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+      responses:
+        '201': {description: Snapshot requested}
+  /api/v1/machines/{id}/snapshots:
+    get:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: Snapshot list}
+  /api/v1/machines/{id}/snapshots/{sid}/restore:
+    post:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/SnapshotID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '202': {description: Restore requested}
+  /api/v1/machines/{id}/snapshots/{sid}:
+    delete:
+      tags: [machines]
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/SnapshotID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '204': {description: Snapshot deleted}
+  /api/v1/machines/{id}/console:
+    get:
+      tags: [machines]
+      summary: Web console (provider-dependent)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: Console HTML or redirect}
+  /api/v1/machines/{id}/console-ticket:
+    post:
+      tags: [machines]
+      summary: Mint a short-lived console ticket
+      description: >-
+        Returns a 10-minute ticket (and sets an equivalent HttpOnly cookie scoped to
+        /api/v1/machines/{id}/) that authorizes GET requests to this machine's
+        /console and /vnc endpoints with viewer rights, for iframes, new tabs and
+        websockets that cannot send an Authorization header. Pass it as
+        ?console_ticket=.
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: '{"ticket": string, "expiresAt": date-time}'}
+  /api/v1/machines/{id}/vnc:
+    get:
+      tags: [machines]
+      summary: VNC websocket/proxy (KubeVirt)
+      parameters:
+        - $ref: '#/components/parameters/MachineID'
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200': {description: VNC stream}
+  /api/v1/machines/{id}/ttl:
+    parameters:
+      - $ref: '#/components/parameters/MachineID'
+      - $ref: '#/components/parameters/Project'
+    put:
+      tags: [machines]
+      summary: Extend, reset or clear a machine's TTL (operator)
+      description: |
+        Overrides the expiry chosen at create time. `ttlMinutes` counts from now;
+        `0` removes the expiry so the machine never auto-deletes. Deleting the
+        machine discards the override.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ttlMinutes]
+              additionalProperties: false
+              properties:
+                ttlMinutes: {type: integer, minimum: 0, maximum: 43200}
+      responses:
+        '200':
+          description: New expiry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: {type: string}
+                  machineId: {type: string}
+                  ttlMinutes: {type: integer}
+                  expiresAt: {type: [string, 'null'], format: date-time}
+        '400': {description: Invalid ttlMinutes}
+        '403': {description: Requires operator on the project}
+        '404': {description: Machine not found}
+  /api/v1/audit:
+    get:
+      tags: [audit]
+      summary: Query the append-only audit log (admin)
+      description: |
+        One entry per mutating API call (POST/PUT/PATCH/DELETE), including calls
+        rejected with 401/403/429, plus background actions by `system:scheduler`
+        and `system:ttl`. Newest first. Callers see only projects they administer
+        (entries without a project need admin on `*`). Requires admin on at least
+        one project.
+      parameters:
+        - {in: query, name: project, schema: {type: string}}
+        - {in: query, name: actor, description: API key name or user, schema: {type: string}}
+        - {in: query, name: action, description: 'Exact action (machine.create) or prefix ending in *', schema: {type: string}}
+        - {in: query, name: machineId, schema: {type: string}}
+        - {in: query, name: result, schema: {type: string, enum: [success, denied, error]}}
+        - {in: query, name: since, schema: {type: string, format: date-time}}
+        - {in: query, name: until, schema: {type: string, format: date-time}}
+        - {in: query, name: limit, description: Page size (1-500, default 50), schema: {type: integer}}
+        - {in: query, name: cursor, description: nextCursor from the previous page, schema: {type: string}}
+      responses:
+        '200':
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/AuditEntry'}
+                  nextCursor: {type: string}
+        '400': {description: Invalid filter or cursor}
+        '403': {description: Requires admin}
+        '501': {description: Audit log not enabled}
+  /api/v1/webhooks:
+    get:
+      tags: [webhooks]
+      summary: List a project's webhook subscriptions (operator)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+      responses:
+        '200':
+          description: Subscriptions (secrets are never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/WebhookSubscription'}
+    post:
+      tags: [webhooks]
+      summary: Create a webhook subscription (admin)
+      description: |
+        Deliveries are CloudEvents (`application/cloudevents+json`) signed with
+        HMAC-SHA256. The URL must be `https` and must not resolve to a loopback,
+        private, link-local or otherwise reserved address unless allowlisted with
+        `KRYTON_WEBHOOK_ALLOW_HOSTS`. The signing `secret` is returned only here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              additionalProperties: false
+              properties:
+                project: {type: string}
+                url: {type: string, format: uri}
+                description: {type: string}
+                eventTypes:
+                  type: array
+                  maxItems: 20
+                  description: Glob patterns such as `io.kryton.machine.*`; empty = all events.
+                  items: {type: string}
+      responses:
+        '201':
+          description: Created (includes `secret`)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WebhookSubscription'}
+        '400': {description: 'Invalid request or URL blocked by the SSRF guard (code WEBHOOK_URL_BLOCKED)'}
+        '403': {description: Requires admin on the project}
+        '409': {description: 'Subscription limit reached (50 per project, code WEBHOOK_LIMIT)'}
+  /api/v1/webhooks/deliveries:
+    get:
+      tags: [webhooks]
+      summary: Delivery log (operator)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: status, schema: {type: string, enum: [pending, retrying, succeeded, dead]}}
+        - {in: query, name: subscriptionId, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer}}
+        - {in: query, name: cursor, schema: {type: string}}
+      responses:
+        '200':
+          description: Deliveries, newest first (payload omitted)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/WebhookDelivery'}
+                  nextCursor: {type: string}
+  /api/v1/webhooks/dead-letters:
+    get:
+      tags: [webhooks]
+      summary: Deliveries that exhausted their retries (operator)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: subscriptionId, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer}}
+        - {in: query, name: cursor, schema: {type: string}}
+      responses:
+        '200':
+          description: Dead deliveries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/WebhookDelivery'}
+                  nextCursor: {type: string}
+  /api/v1/webhooks/deliveries/{id}:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    get:
+      tags: [webhooks]
+      summary: One delivery with payload and attempt log (operator)
+      responses:
+        '200':
+          description: Delivery
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WebhookDelivery'}
+        '404': {description: Not found}
+  /api/v1/webhooks/deliveries/{id}/redeliver:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    post:
+      tags: [webhooks]
+      summary: Reset a delivery for a fresh round of retries (admin)
+      responses:
+        '202': {description: Queued}
+        '404': {description: Not found}
+  /api/v1/webhooks/{id}:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    get:
+      tags: [webhooks]
+      summary: Get a subscription (operator)
+      responses:
+        '200':
+          description: Subscription
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WebhookSubscription'}
+        '404': {description: Not found}
+    put:
+      tags: [webhooks]
+      summary: Update URL, event types or enabled flag (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                url: {type: string, format: uri}
+                description: {type: string}
+                eventTypes: {type: array, items: {type: string}}
+                enabled: {type: boolean}
+      responses:
+        '200': {description: Updated}
+        '400': {description: Invalid or blocked URL}
+        '404': {description: Not found}
+    delete:
+      tags: [webhooks]
+      summary: Delete a subscription (admin)
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+  /api/v1/webhooks/{id}/test:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    post:
+      tags: [webhooks]
+      summary: Queue an io.kryton.webhook.test delivery (admin)
+      responses:
+        '202': {description: Delivery queued}
+        '404': {description: Not found}
+  /api/v1/schedules:
+    get:
+      tags: [schedules]
+      summary: List scheduled power actions (viewer)
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: machineId, schema: {type: string}}
+      responses:
+        '200':
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Schedule'}
+    post:
+      tags: [schedules]
+      summary: Create a scheduled power action (operator)
+      description: |
+        Runs `action` on the machine whenever the 5-field `cron` matches in the
+        given IANA `timezone` (default UTC). A run that starts more than 5 minutes
+        after its slot (for example after downtime) is skipped, not replayed.
+        Deleting the machine removes its schedules.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [machineId, action, cron]
+              additionalProperties: false
+              properties:
+                project: {type: string}
+                machineId: {type: string}
+                action: {type: string, enum: [start, stop, restart, snapshot]}
+                cron: {type: string, example: '0 19 * * mon-fri'}
+                timezone: {type: string, example: Europe/Berlin}
+                snapshotName: {type: string, maxLength: 63}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Schedule'}
+        '400': {description: Invalid action, cron or timezone}
+        '403': {description: Requires operator}
+        '404': {description: Machine not found}
+        '409': {description: 'Schedule limit reached (100 per project, code SCHEDULE_LIMIT)'}
+  /api/v1/schedules/{id}:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    get:
+      tags: [schedules]
+      summary: Get a schedule (viewer)
+      responses:
+        '200':
+          description: Schedule
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Schedule'}
+        '404': {description: Not found}
+    put:
+      tags: [schedules]
+      summary: Update or enable/disable a schedule (operator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                action: {type: string, enum: [start, stop, restart, snapshot]}
+                cron: {type: string}
+                timezone: {type: string}
+                snapshotName: {type: string}
+                enabled: {type: boolean}
+      responses:
+        '200': {description: Updated}
+        '400': {description: Invalid cron or timezone}
+        '404': {description: Not found}
+    delete:
+      tags: [schedules]
+      summary: Delete a schedule (operator)
+      responses:
+        '204': {description: Deleted}
+        '404': {description: Not found}
+  /api/v1/quotas:
+    get:
+      tags: [quotas]
+      summary: Quota limits and current usage for every project you can view
+      responses:
+        '200':
+          description: Quotas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/ProjectQuota'}
+  /api/v1/quotas/{project}:
+    parameters:
+      - {in: path, name: project, required: true, schema: {type: string}}
+    get:
+      tags: [quotas]
+      summary: One project's quota and usage (viewer)
+      responses:
+        '200':
+          description: Quota
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProjectQuota'}
+    put:
+      tags: [quotas]
+      summary: Set a project's limits (admin); 0 = unlimited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuotaLimits'}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProjectQuota'}
+        '400': {description: Invalid limits or unknown project}
+        '403': {description: Requires admin}
+    delete:
+      tags: [quotas]
+      summary: Remove the override so the project inherits the default (admin)
+      responses:
+        '204': {description: Removed}
+  /api/v1/events:
+    get:
+      tags: [events]
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, default: 100}
+      responses:
+        '200': {description: CloudEvent history}
+  /api/v1/events/stream:
+    get:
+      tags: [events]
+      summary: Server-sent CloudEvent stream
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema: {type: string}
+  /healthz:
+    get:
+      tags: [health]
+      security: []
+      responses:
+        '200': {description: Liveness}
+  /readyz:
+    get:
+      tags: [health]
+      security: []
+      responses:
+        '200': {description: Readiness}
+  /metrics:
+    get:
+      tags: [health]
+      summary: Prometheus metrics
+      description: |
+        Prometheus text exposition (v0.0.4). Open when `KRYTON_AUTH_MODE=disabled`
+        or `KRYTON_METRICS_PUBLIC=true`; otherwise present the dedicated
+        `KRYTON_METRICS_TOKEN` (full view) or any valid API key (limited to the
+        projects it can view). Series: `kryton_machines{project,provider,state}`,
+        `kryton_provider_up`, `kryton_api_requests_total{method,route,code}`,
+        `kryton_http_request_duration_seconds` (histogram), `kryton_operations_total`,
+        `kryton_rate_limit_rejections_total`, `kryton_auth_failures_total`,
+        `kryton_quota_limit` / `kryton_quota_usage` / `kryton_quota_rejections_total`,
+        `kryton_webhook_dead_letters` / `kryton_webhook_deliveries_total`,
+        `kryton_scheduled_actions_total`, `kryton_ttl_expirations_total`,
+        `kryton_audit_entries`.
+      security:
+        - bearerAuth: []
+        - metricsToken: []
+        - {}
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema: {type: string}
+        '401': {description: Token or API key required}
+  /openapi.yaml:
+    get:
+      tags: [meta]
+      security: []
+      summary: OpenAPI 3.1 specification
+      responses:
+        '200':
+          description: OpenAPI YAML
+          content:
+            application/yaml:
+              schema: {type: string}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key from KRYTON_API_KEYS_FILE (hash with krytonctl hash-token)
+    metricsToken:
+      type: http
+      scheme: bearer
+      description: Dedicated /metrics scrape token (KRYTON_METRICS_TOKEN)
+  parameters:
+    Project:
+      in: query
+      name: project
+      schema: {type: string}
+      description: Project scope (defaults to identity default when omitted on some routes)
+    MachineID:
+      in: path
+      name: id
+      required: true
+      schema: {type: string, format: uuid}
+    SnapshotID:
+      in: path
+      name: sid
+      required: true
+      schema: {type: string}
+    GoldenID:
+      in: path
+      name: id
+      required: true
+      schema: {type: string}
+  schemas:
+    AuditEntry:
+      type: object
+      properties:
+        seq: {type: integer, format: int64}
+        id: {type: string}
+        time: {type: string, format: date-time}
+        actor: {type: string, description: 'API key name, proxy user, anonymous, system:scheduler or system:ttl'}
+        role: {type: string}
+        project: {type: string}
+        action: {type: string, example: machine.create}
+        machineId: {type: string}
+        method: {type: string}
+        path: {type: string}
+        status: {type: integer}
+        result: {type: string, enum: [success, denied, error]}
+        requestId: {type: string}
+        remote: {type: string}
+        detail: {type: string}
+    WebhookSubscription:
+      type: object
+      properties:
+        id: {type: string}
+        project: {type: string}
+        url: {type: string}
+        description: {type: string}
+        eventTypes: {type: array, items: {type: string}}
+        enabled: {type: boolean}
+        secret: {type: string, description: Returned once, at creation only}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    WebhookDelivery:
+      type: object
+      properties:
+        id: {type: string}
+        subscriptionId: {type: string}
+        project: {type: string}
+        eventId: {type: string}
+        eventType: {type: string}
+        status: {type: string, enum: [pending, retrying, succeeded, dead]}
+        attempts: {type: integer}
+        lastStatusCode: {type: integer}
+        lastError: {type: string}
+        nextAttemptAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        attemptLog:
+          type: array
+          description: Detail view only (last 10 attempts)
+          items:
+            type: object
+            properties:
+              time: {type: string, format: date-time}
+              statusCode: {type: integer}
+              error: {type: string}
+              durationMs: {type: integer}
+        payload: {type: object, description: The CloudEvent; detail view only}
+    Schedule:
+      type: object
+      properties:
+        id: {type: string}
+        project: {type: string}
+        machineId: {type: string}
+        action: {type: string, enum: [start, stop, restart, snapshot]}
+        cron: {type: string}
+        timezone: {type: string}
+        snapshotName: {type: string}
+        enabled: {type: boolean}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        nextRunAt: {type: string, format: date-time}
+        lastRunAt: {type: string, format: date-time}
+        lastResult: {type: string, enum: [success, error, skipped]}
+        lastError: {type: string}
+        runCount: {type: integer}
+    QuotaLimits:
+      type: object
+      additionalProperties: false
+      description: Per-project caps; 0 means unlimited.
+      properties:
+        maxMachines: {type: integer, minimum: 0}
+        maxVCPU: {type: integer, minimum: 0}
+        maxMemoryMiB: {type: integer, minimum: 0}
+        maxDiskGiB: {type: integer, minimum: 0}
+    ProjectQuota:
+      type: object
+      properties:
+        project: {type: string}
+        limits: {$ref: '#/components/schemas/QuotaLimits'}
+        usage:
+          type: object
+          properties:
+            machines: {type: integer}
+            vCPU: {type: integer}
+            memoryMiB: {type: integer}
+            diskGiB: {type: integer}
+        explicit: {type: boolean, description: false when inherited from the default}
+    CreateMachine:
+      type: object
+      required: [project, name, image, compute, disk]
+      properties:
+        project: {type: string}
+        name: {type: string}
+        image: {type: string}
+        compute:
+          type: object
+          required: [cpu, memoryMiB]
+          properties:
+            cpu: {type: integer, minimum: 1, maximum: 256}
+            memoryMiB: {type: integer, minimum: 512}
+        disk:
+          type: object
+          required: [sizeGiB]
+          properties:
+            sizeGiB: {type: integer, minimum: 16}
+            storageClass: {type: string, description: Override Settings default (e.g. rook-ceph-block)}
+        network:
+          type: object
+          properties:
+            networkId: {type: string}
+        ttlMinutes: {type: integer, minimum: 0, maximum: 43200}
+        initialization:
+          $ref: "#/components/schemas/LinuxInitialization"
+        dockur:
+          $ref: '#/components/schemas/DockurOptions'
+    LinuxInitialization:
+      type: object
+      additionalProperties: false
+      properties:
+        username: {type: string, pattern: "^[a-z_][a-z0-9_-]{0,31}$"}
+        sshAuthorizedKeys:
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 16384}
+    DockurOptions:
+      type: object
+      description: dockur/windows create options (provider=dockur only). Password is write-only.
+      properties:
+        username: {type: string, maxLength: 64}
+        password: {type: string, maxLength: 128, writeOnly: true}
+        hostname: {type: string, maxLength: 63}
+        language: {type: string}
+        region: {type: string}
+        keyboard: {type: string}
+        productKey: {type: string, maxLength: 64}
+        domain: {type: string}
+        domainOu: {type: string}
+        autologin: {type: boolean}
+        audio: {type: boolean}
+        secureBoot: {type: boolean}
+        sharedDir:
+          type: string
+          deprecated: true
+          description: Legacy. Single directory name under the machine directory (never a host path; absolute paths and `..` are rejected). Prefer `shared`.
+        oemDir:
+          type: string
+          deprecated: true
+          description: Legacy. Single directory name under the machine directory. Prefer `oemScript`.
+        shared:
+          type: boolean
+          description: Mount <machineDir>/shared at /shared (guest `\\host.lan\Data`, drive Z:); enables the shared-folder API.
+        oemScript:
+          type: string
+          maxLength: 65536
+          description: Written to <machineDir>/oem/install.bat (CRLF) and run by dockur at the end of the first install.
+        jobAgent:
+          type: boolean
+          description: Install the Kryton guest agent via the OEM script so the jobs API works. Implies `shared`. Needs autologin (default).
+        publicBind:
+          type: boolean
+          description: Publish RDP and the web viewer on 0.0.0.0. Default false = 127.0.0.1 only.
+        rdpPort: {type: integer, minimum: 1024, maximum: 65535, description: Fixed host RDP port; 0/omitted = auto. 409 if taken by another machine or in use on the host.}
+        consolePort: {type: integer, minimum: 1024, maximum: 65535, description: Fixed host web-viewer port; 0/omitted = auto.}
+        command: {type: string, maxLength: 2048}
+        customIso: {type: string}
+        edition: {type: string}
+        extraDisksGiB:
+          type: array
+          maxItems: 3
+          items: {type: integer, minimum: 1, maximum: 65536}
+    Readiness:
+      type: object
+      required: [machineId, ready, containerUp, rdpOpen, agentPresent, agentRequired, checks]
+      properties:
+        machineId: {type: string}
+        ready: {type: boolean}
+        containerUp: {type: boolean}
+        rdpOpen: {type: boolean}
+        agentPresent: {type: boolean}
+        agentRequired: {type: boolean}
+        install:
+          type: object
+          properties:
+            phase: {type: string, enum: [starting, downloading, extracting, building, installing, stopped, unknown, complete]}
+            percent: {type: integer}
+            message: {type: string}
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              ok: {type: boolean}
+              detail: {type: string}
+    SharedFile:
+      type: object
+      properties:
+        path: {type: string}
+        name: {type: string}
+        size: {type: integer, format: int64}
+        isDir: {type: boolean}
+        modTime: {type: string, format: date-time}
+    GuestJobSpec:
+      type: object
+      additionalProperties: false
+      required: [script]
+      properties:
+        name: {type: string, maxLength: 63}
+        shell: {type: string, enum: [cmd, powershell], default: cmd}
+        script: {type: string, maxLength: 65536}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 86400, default: 600}
+        env:
+          type: object
+          maxProperties: 32
+          description: Names match ^[A-Za-z_][A-Za-z0-9_]{0,63}$ and may not start with KRYTON_
+          additionalProperties: {type: string, maxLength: 4096}
+    GuestJob:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        project: {type: string}
+        machineId: {type: string}
+        name: {type: string}
+        shell: {type: string}
+        state: {type: string, enum: [queued, running, succeeded, failed, timed_out, canceled]}
+        exitCode: {type: integer}
+        timeoutSeconds: {type: integer}
+        message: {type: string}
+        submittedAt: {type: string, format: date-time}
+        startedAt: {type: string, format: date-time}
+        finishedAt: {type: string, format: date-time}
+        cancelRequested: {type: boolean}
+        artifacts:
+          type: array
+          items: {$ref: '#/components/schemas/SharedFile'}
+    SettingsUpdate:
+      type: object
+      properties:
+        defaultProject: {type: string}
+        imageNamespace: {type: string}
+        eventWebhookUrl: {type: string}
+        storageClass: {type: string}
+    StorageSetup:
+      type: object
+      required: [backend]
+      properties:
+        backend: {type: string, enum: [longhorn, rook-ceph]}
+        rookMode: {type: string, enum: [lab, devices, pool-only, device]}
+        device: {type: string, example: /dev/sdb1}
+        wipeDevice: {type: boolean}
+        setDefault: {type: boolean, default: true}
+    AtlasConfig:
+      type: object
+      properties:
+        enabled: {type: boolean}
+        baseUrl: {type: string, example: http://127.0.0.1:5110}
+        token: {type: string}
+        product: {type: string, default: kryton}
+        preferAtlas: {type: boolean}
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: {type: string}
+            message: {type: string}
+            hint: {type: string, description: Action the operator should take next}
+            requestId: {type: string}

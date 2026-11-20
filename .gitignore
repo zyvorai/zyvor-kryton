@@ -1,0 +1,30 @@
+# Binaries / build
+/bin/
+*.exe
+*.test
+*.out
+coverage.out
+
+# Deploy / local
+.deploy-last
+.ux-shots/
+.kryton/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Go
+vendor/
+node_modules/
+package-lock.json
+!web/package-lock.json
+*.tsbuildinfo
+
+# MkDocs
+.venv-docs/
+/_docs-build/
+/_pages/
+__pycache__/

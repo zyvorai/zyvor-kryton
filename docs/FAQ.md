@@ -1,0 +1,81 @@
+---
+hero:
+  eyebrow: FAQ
+  title: FAQ
+---
+
+Questions people evaluating Kryton actually ask, before they've decided to
+adopt it. Already decided? [`docs/USER-GUIDE.md`](USER-GUIDE.md) is a
+better starting point.
+
+## Licensing & cost
+
+**Is it really free?** For non-production use, yes: the Zyvor Production
+License v1.0 makes evaluation, development, testing, research and education
+free. Production use needs a commercial license (sales@zyvor.dev) (see [`NOTICE`](https://github.com/zyvorai/kryton/blob/main/NOTICE)). No Windows media or license
+keys are shipped — that stays the operator's responsibility. See the
+README's [License](https://github.com/zyvorai/kryton#license) section.
+
+**What does "Enterprise" mean here?** Production support, SLAs, and
+Zyvor's other commercial products are licensed separately. Contact
+sales@zyvor.dev. Nothing in this repository requires it.
+
+## Support
+
+**What if I find a bug?** Open a GitHub issue.
+
+**What if I find a security vulnerability?** See [`SECURITY.md`](https://github.com/zyvorai/kryton/blob/main/SECURITY.md)
+— private reporting via GitHub Security Advisories. Note its own text:
+"Kryton does not yet maintain long-term-support branches. Security fixes
+land on `main` and the latest tagged release; older tags are not
+backported."
+
+## Production readiness
+
+**Is this production-ready?** It depends which provider. Per
+[`docs/GA.md`](GA.md): the **KubeVirt provider is the GA path**. The
+**`dockur` lab provider "remains a lab installer, not GA."** Also
+explicitly out of GA scope today: running more than one `krytond` replica —
+[`docs/ARCHITECTURE.md`](ARCHITECTURE.md) documents a single-writer TTL
+reconciler and in-process event/SSE bus, so multi-replica isn't safe yet.
+Read `docs/GA.md`'s full checklist before a production go-live decision.
+
+**What Kryton explicitly doesn't do**: it's not a Windows installer,
+activation service, or media distributor, and not a raw KubeVirt YAML
+factory for callers — see the README's "What Kryton is not" section.
+
+## Architecture
+
+**How does the provider abstraction work?** One Go `provider.Provider`
+interface; callers only ever see REST+CloudEvents, never backend-specific
+detail. Four providers translate the same contract: `demo` (in-memory),
+`dockur` (real Windows via dockur/windows on Docker/Podman+KVM, lab-grade),
+`libvirt` (Linux cloud images on a KVM host, initial backend), and
+`kubevirt` (production Windows and Linux VMs on Kubernetes). See
+[`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
+
+**Does Kryton run Linux?** Yes. Linux guests use the same machine API as
+Windows ones, on the `libvirt` provider (a single KVM host) or on `kubevirt`
+(cloud-init). Guests are configured with a username and SSH public keys and
+are password-locked. See [`docs/LINUX-TEMPLATES.md`](LINUX-TEMPLATES.md).
+
+**Which Linux images?** Eleven amd64 cloud images: Ubuntu 22.04, 24.04 and
+26.04, Debian 12 and 13, Rocky Linux 9 and 10, AlmaLinux 9 and 10, CentOS
+Stream 10, and Fedora 44. Kryton ships no images;
+`kryton-image fetch` downloads them from the distribution and only accepts
+them against an operator-approved SHA-256.
+
+**Does it integrate with other Zyvor products?** Yes — see
+[`docs/ATLAS.md`](ATLAS.md) for the Zyvor Atlas storage control plane
+integration.
+
+## Hardware & platform
+
+**What do I need to run it?** Go 1.27.1+; for the `dockur` provider,
+Docker/Podman with KVM; for the `libvirt` provider, KVM with libvirt,
+`qemu-img` and `genisoimage`; for the `kubevirt` provider, a Kubernetes cluster
+with KubeVirt and CDI installed (see [`docs/DEPLOYMENT.md`](DEPLOYMENT.md)
+and [`docs/STORAGE.md`](STORAGE.md) for storage-class requirements).
+
+**Windows licensing?** Not Kryton's concern by design — "Microsoft media,
+activation, and entitlement remain the operator's responsibility" (README).

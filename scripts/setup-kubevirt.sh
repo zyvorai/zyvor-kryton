@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+# One-shot KubeVirt + Kryton API setup and Windows VM smoke test.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+MODE="host"
+PORT="${KRYTON_PORT:-9088}"
+IMAGE=""
+IMAGE_ID="windows-11-enterprise"
+HTTP_URL=""
+HTTP_MODE=false
+VM_NAME="win11-k8s-01"
+SKIP_CREATE=false
+SKIP_BOOTSTRAP=false
+INSECURE=false
+USER_HELM=false
+
+usage() {
+  cat <<EOF
+Automated KubeVirt Windows setup for Kryton.
+
+Usage:
+  KRYTON_WINDOWS_IMAGE=/path/to/win11.qcow2 $0
+  KRYTON_IMAGE_URL=https://artifacts.example/win11.qcow2 $0 --http
+  $0 --image /path/to/win11.qcow2 [--helm] [--port 9088] [--skip-create]
+  $0 --http --url https://artifacts.example/win11.qcow2
+
+Modes:
+  (default)   Build krytond on this host + systemd unit (uses kubeconfig)
+  --helm      Deploy Kryton in-cluster via Helm (values-lab.yaml, NodePort)
+  --http      Bootstrap via CDI HTTP import (WinForge-style published image)
+
+Steps:
+  1. Verify kubectl + KubeVirt + CDI
+  2. Bootstrap CDI DataSource (scripts/bootstrap-kubevirt-images.sh)
+  3. Install Kryton API (host systemd or Helm)
+  4. POST /api/v1/machines (windows-11-enterprise) and poll status
+
+Environment:
+  KRYTON_WINDOWS_IMAGE   Golden Windows qcow2 for bootstrap (upload mode)
+  KRYTON_IMAGE_URL       HTTP(S) URL to qcow2 (--http mode)
+  KRYTON_PORT            API listen port (default: 9088 host, auto-increments if busy)
+  KRYTON_URL             Override API base URL for smoke test
+
+Build a golden image first (WinForge-style):
+  VERSION=11e ./scripts/build-golden-image.sh
+  # Sysprep in guest, then:
+  VERSION=11e FINALIZE=1 ./scripts/build-golden-image.sh
+  See docs/GOLDEN-IMAGES.md
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    --helm) MODE=helm; shift ;;
+    --image) IMAGE="$2"; shift 2 ;;
+    --http) HTTP_MODE=true; shift ;;
+    --url) HTTP_URL="$2"; shift 2 ;;
+    --port) PORT="$2"; shift 2 ;;
+    --name) VM_NAME="$2"; shift 2 ;;
+    --skip-create) SKIP_CREATE=true; shift ;;
+    --skip-bootstrap) SKIP_BOOTSTRAP=true; shift ;;
+    --insecure) INSECURE=true; shift ;;
+    --user) USER_HELM=true; shift ;;
+    *) echo "unknown arg: $1" >&2; usage; exit 1 ;;
+  esac
+done
+
+need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
+need kubectl
+need curl
+need jq
+
+pick_port() {
+  local p="${1}"
+  if command -v ss >/dev/null; then
+    while ss -tln | awk '{print $4}' | grep -q ":${p}$"; do
+      p=$((p + 1))
+    done
+  fi
+  echo "${p}"
+}
+PORT="$(pick_port "${PORT}")"
+
+echo "=== Kryton KubeVirt setup (API port ${PORT}) ==="
+
+kubectl cluster-info >/dev/null
+kubectl get crd virtualmachines.kubevirt.io datasources.cdi.kubevirt.io >/dev/null
+
+echo "→ Enabling KubeVirt snapshots (feature gate + CSI)"
+"${SCRIPT_DIR}/enable-kubevirt-snapshots.sh"
+
+if [ "${SKIP_BOOTSTRAP}" = false ]; then
+  if [ -n "${IMAGE}" ]; then
+    export KRYTON_WINDOWS_IMAGE="${IMAGE}"
+  fi
+  if [ -n "${HTTP_URL}" ]; then
+    export KRYTON_IMAGE_URL="${HTTP_URL}"
+  fi
+  BOOT_ARGS=(--id "${IMAGE_ID}")
+  if [ "${HTTP_MODE}" = true ] || [ -n "${HTTP_URL}" ]; then
+    BOOT_ARGS+=(--http)
+  fi
+  "${SCRIPT_DIR}/bootstrap-kubevirt-images.sh" "${BOOT_ARGS[@]}"
+fi
+
+API_URL=""
+if [ "${MODE}" = helm ]; then
+  need helm
+  need docker
+  echo "→ Building container image"
+  docker build -t kryton:local "${PROJECT_DIR}"
+  if command -v k3s >/dev/null; then
+    docker save kryton:local | sudo k3s ctr images import - >/dev/null
+  fi
+  echo "→ Installing Helm release"
+  HELM_VALUES="${KRYTON_HELM_VALUES:-${PROJECT_DIR}/deploy/helm/kryton/values-lab.yaml}"
+  if [ "${USER_HELM}" = true ]; then
+    HELM_VALUES="${PROJECT_DIR}/deploy/helm/kryton/values-user.yaml"
+  fi
+  helm upgrade --install kryton "${PROJECT_DIR}/deploy/helm/kryton" \
+    -n kryton --create-namespace \
+    -f "${HELM_VALUES}" \
+    --set image.repository=kryton --set image.tag=local
+  kubectl -n kryton rollout status deployment/kryton --timeout=180s
+  NODE_IP="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+  NODE_PORT="$(kubectl -n kryton get svc kryton -o jsonpath='{.spec.ports[0].nodePort}')"
+  API_URL="http://${NODE_IP}:${NODE_PORT}"
+else
+  echo "→ Building binaries"
+  make -C "${PROJECT_DIR}" build
+  sudo install -m755 "${PROJECT_DIR}/bin/krytond" "${PROJECT_DIR}/bin/krytonctl" /usr/local/bin/
+  AUTH_MODE="apikey"
+  KEYS_FILE="${HOME}/.kryton/keys.json"
+  LAB_AUTO=""
+  LAB_TOKEN=""
+  if [ "${INSECURE}" = true ]; then
+    AUTH_MODE="disabled"
+    KEYS_FILE=""
+  else
+    KRYTON_KEYS_DIR="${HOME}/.kryton" "${SCRIPT_DIR}/ensure-api-keys.sh"
+    LAB_AUTO="
+Environment=KRYTON_LAB_AUTO_AUTH=true
+Environment=KRYTON_LAB_TOKEN_FILE=${HOME}/.kryton/lab.token"
+  fi
+  sudo tee /etc/systemd/system/kryton-kubevirt.service >/dev/null <<UNIT
+[Unit]
+Description=Kryton KubeVirt control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=KRYTON_PROVIDER=kubevirt
+Environment=KRYTON_AUTH_MODE=${AUTH_MODE}
+Environment=KRYTON_API_KEYS_FILE=${KEYS_FILE}
+Environment=KRYTON_ALLOW_INSECURE=true
+Environment=KRYTON_ADDR=:${PORT}
+Environment=KRYTON_IMAGE_NAMESPACE=kryton-images
+Environment=KRYTON_STORAGE_CLASS=rook-ceph-block
+Environment=KRYTON_PROJECTS=default
+Environment=KRYTON_DEFAULT_PROJECT=default
+Environment=KRYTON_KUBECONFIG=${HOME}/.kube/config
+Environment=KRYTON_PROJECT_ROOT=${HOME}/.deployments/kryton
+Environment=KRYTON_CORS_ORIGINS=*
+Environment=KRYTON_EVENTS_FILE=${HOME}/.kryton/events-kubevirt.jsonl
+${LAB_AUTO}
+ExecStart=/usr/local/bin/krytond
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now kryton-kubevirt.service
+  sleep 2
+  HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  API_URL="http://127.0.0.1:${PORT}"
+  echo "→ API on host :${PORT} (public: http://${HOST_IP}:${PORT})"
+fi
+
+API_URL="${KRYTON_URL:-${API_URL}}"
+AUTH_HDR=()
+if [ "${INSECURE}" != true ] && [ -f "${HOME}/.kryton/lab.token" ]; then
+  AUTH_HDR=(-H "Authorization: Bearer $(cat "${HOME}/.kryton/lab.token")")
+fi
+echo "→ Waiting for ${API_URL}/readyz"
+for _ in $(seq 1 30); do
+  if curl -fsS "${AUTH_HDR[@]}" "${API_URL}/readyz" >/dev/null 2>&1; then break; fi
+  sleep 2
+done
+curl -fsS "${AUTH_HDR[@]}" "${API_URL}/readyz" >/dev/null
+
+echo "→ Doctor"
+curl -sS "${AUTH_HDR[@]}" "${API_URL}/api/v1/doctor" | jq .
+
+if [ "${SKIP_CREATE}" = true ]; then
+  echo "✓ Setup complete (skipped VM create)"
+  echo "  API: ${API_URL}"
+  exit 0
+fi
+
+echo "→ Creating Windows 11 VM: ${VM_NAME}"
+CREATE="$(curl -fsS -X POST "${API_URL}/api/v1/machines" \
+  "${AUTH_HDR[@]}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"project\":\"default\",\"name\":\"${VM_NAME}\",\"image\":\"${IMAGE_ID}\",\"compute\":{\"cpu\":4,\"memoryMiB\":8192},\"disk\":{\"sizeGiB\":96}}")"
+echo "${CREATE}" | jq .
+MID="$(echo "${CREATE}" | jq -r '.id')"
+
+echo "→ Polling machine (up to 10 min)"
+for _ in $(seq 1 60); do
+  sleep 10
+  BODY="$(curl -fsS "${AUTH_HDR[@]}" "${API_URL}/api/v1/machines/${MID}?project=default")"
+  STATE="$(echo "${BODY}" | jq -r '.state')"
+  MSG="$(echo "${BODY}" | jq -r '.message // empty')"
+  IPS="$(echo "${BODY}" | jq -r '.ipAddresses | join(", ") // empty')"
+  echo "  state=${STATE} ips=${IPS} ${MSG}"
+  case "${STATE}" in
+    running|stopped) break ;;
+    failed) echo "${BODY}" | jq .; exit 1 ;;
+  esac
+done
+
+echo ""
+echo "✓ Kryton KubeVirt API is live"
+echo "  URL:     ${API_URL}"
+echo "  UI:      ${API_URL}/"
+echo "  VM id:   ${MID}"
+echo "  VM name: ${VM_NAME}"
+echo ""
+echo "kubectl -n default get vm,vmi,pvc"
+echo "KRYTON_URL=${API_URL} krytonctl get ${MID}"

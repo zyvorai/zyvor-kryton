@@ -1,0 +1,155 @@
+---
+hero:
+  eyebrow: ARCHITECTURE
+  title: Kryton architecture
+  lead: >-
+    Callers see one stable machine API; providers translate it into demo
+    state, dockur compose stacks, libvirt domains, or KubeVirt VirtualMachines.
+  highlights:
+    - {value: "4", label: "Providers behind one contract — demo, dockur, libvirt, KubeVirt"}
+    - {value: "1", label: "krytond replica — no leader election in the TTL reconciler or event bus yet"}
+    - {value: "SHA-256", label: "API keys stored as digests — raw tokens never persisted"}
+---
+
+Kryton is deliberately split at the **provider boundary**. Callers see one stable machine API; providers translate it into demo state, dockur compose stacks, libvirt domains, or KubeVirt VirtualMachines. Windows and Linux guests share the same contract; Linux guests are configured through `initialization` (cloud-init user and SSH keys).
+
+```text
+Consumers
+  Veyron / Zeus / Atlas / Haven / CI / portals / third parties
+                         |
+                 REST + CloudEvents (+ OpenAPI / CORS)
+                         |
+                     Kryton API
+                         |
+             provider.Provider contract
+                         |
+        +---------+---------+---------+-----------+
+        |         |         |                     |
+     demo      dockur    libvirt              KubeVirt
+                  |         |                     |
+           dockur/windows  virsh + qemu-img   Kubernetes REST
+           (Docker/Podman  (Linux cloud            |
+            + KVM)          images, KVM)     QEMU / KVM VMs
+                                     │
+                          CSI disks (Rook / Longhorn)
+                          optional Atlas discovery
+```
+
+---
+
+## Take a closer look
+
+=== "Demo"
+
+    | | |
+    |---|---|
+    | Use case | Local eval, CI smoke tests |
+    | Source of truth | In-memory map |
+    | Guests | None — instant fake machines for eval |
+
+    Intentionally in-memory; data is lost on restart.
+
+=== "Dockur"
+
+    | | |
+    |---|---|
+    | Use case | Lab hosts with Docker/Podman + KVM |
+    | Source of truth | Compose state under `KRYTON_DOCKUR_DATA_DIR` |
+    | Guests | Windows via [dockur/windows](https://github.com/dockur/windows) |
+
+    Compose projects and disk images persist under `KRYTON_DOCKUR_DATA_DIR`. See [DOCKUR.md](DOCKUR.md) for the lab provider.
+
+=== "Libvirt"
+
+    | | |
+    |---|---|
+    | Use case | A single KVM host without Docker or Kubernetes |
+    | Source of truth | libvirt domains plus metadata under `KRYTON_LIBVIRT_DATA_DIR` |
+    | Guests | Linux cloud images (Ubuntu, Debian, Rocky, AlmaLinux) with cloud-init |
+
+    Images come from `kryton-image fetch` against an approved SHA-256; each machine gets a QCOW2 overlay and a cloud-init seed. Initial host backend, not GA. See [LINUX-TEMPLATES.md](LINUX-TEMPLATES.md).
+
+=== "KubeVirt"
+
+    | | |
+    |---|---|
+    | Use case | Production Kubernetes estates |
+    | Source of truth | Kubernetes API |
+    | Guests | Windows golden images and Linux cloud images via CDI `DataSource` objects |
+
+    Kubernetes is authoritative. Kryton is stateless with respect to machine inventory and can be restarted without losing machine identity. See [DEPLOYMENT.md](DEPLOYMENT.md) for production.
+
+---
+
+## Stable identity
+
+A Kryton machine receives a **UUID** independent from its provider name. The KubeVirt provider records the UUID and project in labels and preserves the original Kryton specification in a managed annotation. External clients therefore never need to address `namespace/name` directly.
+
+The dockur provider maps UUIDs to compose project directories. The demo provider holds machines in a process-local map.
+
+---
+
+## Single-replica today
+
+Run exactly one `krytond` replica. Two in-process pieces of state make more than one unsafe right now:
+
+- **`internal/reconciler/ttl.go`** has no leader election — every replica independently lists and expires the same machines on its own timer, which is at best redundant work and at worst a race between replicas' `Delete` calls.
+- The operations packages share that single-replica constraint: **`internal/schedule`** (cron runner), **`internal/webhooks`** (delivery workers and retry timers) and **`internal/audit`** (in-memory window) keep process-local state backed by local JSON/JSONL files, so with several replicas every pod would fire the same schedule and deliver the same webhook. Run one replica until these gain leader election or a shared store.
+- **`internal/events/events.go`**'s `Bus` holds its event history and SSE subscriber set purely in-process (an in-memory ring buffer, optionally mirrored to a local JSONL file) — with multiple replicas, `GET /api/v1/events` and `GET /api/v1/events/stream` return different results depending on which pod a client's connection or load-balanced request lands on.
+
+The Helm chart's `deploy/helm/kryton/values.yaml` pins `replicaCount: 1` and ships a `podDisruptionBudget` template disabled by default for the same reason. Scaling `krytond` out requires either a leader-elected TTL loop (e.g. a Kubernetes Lease) or moving it to a single CronJob, plus a shared events backend (e.g. Redis/DB-backed, or a single-writer SSE fan-out) — neither exists today. This is distinct from [GA.md](GA.md)'s "Live migration / HA replicas" note, which is about the KubeVirt **guest VM**, not krytond itself.
+
+---
+
+## Projects
+
+Kryton projects map to provider isolation domains:
+
+- **KubeVirt** — one Kubernetes namespace per project (optionally prefixed by `KRYTON_NAMESPACE_PREFIX`).
+- **dockur** — project is recorded on the machine; compose stacks are namespaced by machine ID.
+- **demo** — logical grouping only.
+
+RBAC roles (`viewer` · `operator` · `admin`) are always intersected with project membership.
+
+---
+
+## Events
+
+Lifecycle events use the CloudEvents structured envelope. They are available through:
+
+- `GET /api/v1/events` — history
+- `GET /api/v1/events/stream` — authenticated SSE
+- Optional webhook sink (`KRYTON_EVENT_WEBHOOK_URL`)
+
+Dockur provisioning additionally emits `io.kryton.machine.install.started` when unattended setup begins.
+
+---
+
+## Diagnostics
+
+`internal/doctor` runs provider-aware health checks exposed as `GET /api/v1/doctor` and `krytonctl doctor`. Checks include auth mode, projects, catalog, provider health, and (for dockur) runtime, compose, KVM, and data-dir writability. For kubevirt it also checks namespaces, DataSources, snapshot CRDs, and StorageClass ↔ VolumeSnapshotClass pairing.
+
+`POST /api/v1/settings/test` and Settings → **Test connection** run live probes (Kubernetes, KubeVirt, storage, kubectl, install scripts).
+
+## Storage and Atlas
+
+KubeVirt VM disks need a CSI StorageClass with a matching VolumeSnapshotClass — see [STORAGE.md](STORAGE.md). Operators can install Rook/Longhorn from Settings or scripts, and set the Kryton default StorageClass via UI/API (`~/.kryton/storage.json`).
+
+Optional **Atlas** integration ([ATLAS.md](ATLAS.md)) points Kryton at the Zyvor storage control plane (`product: kryton`) for discovery and ownership conventions.
+
+## Public API surface
+
+Other products discover Kryton via `GET /api/v1` and `GET /openapi.yaml`. Cross-origin browser clients need `KRYTON_CORS_ORIGINS`. See [API.md](API.md).
+
+---
+
+## Security boundaries
+
+Kryton does not expose raw QEMU, RDP, WinRM, or arbitrary PowerShell execution through the API.
+
+- **API keys** for service-to-service use (SHA-256 digests stored, raw tokens never persisted). How to mint and retrieve keys: [AUTH.md](AUTH.md).
+- **Proxy auth** for browser SSO via trusted reverse proxy headers.
+- Production KubeVirt mode refuses to start with authentication disabled unless the operator explicitly opts into insecure operation (`KRYTON_ALLOW_INSECURE=true`).
+- The dockur provider is intended for labs; use API-key auth on shared hosts.
+
+Console and RDP ports for dockur are published on the host — restrict with firewall policy.

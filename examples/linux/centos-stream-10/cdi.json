@@ -1,0 +1,48 @@
+{
+  "apiVersion": "v1",
+  "items": [
+    {
+      "apiVersion": "cdi.kubevirt.io/v1beta1",
+      "kind": "DataVolume",
+      "metadata": {
+        "name": "centos-stream-10",
+        "namespace": "kryton-images"
+      },
+      "spec": {
+        "source": {
+          "http": {
+            "url": "https://artifacts.example.invalid/centos-stream-10.qcow2"
+          }
+        },
+        "storage": {
+          "accessModes": [
+            "ReadWriteOnce"
+          ],
+          "resources": {
+            "requests": {
+              "storage": "20Gi"
+            }
+          },
+          "volumeMode": "Filesystem"
+        }
+      }
+    },
+    {
+      "apiVersion": "cdi.kubevirt.io/v1beta1",
+      "kind": "DataSource",
+      "metadata": {
+        "name": "centos-stream-10",
+        "namespace": "kryton-images"
+      },
+      "spec": {
+        "source": {
+          "pvc": {
+            "name": "centos-stream-10",
+            "namespace": "kryton-images"
+          }
+        }
+      }
+    }
+  ],
+  "kind": "List"
+}

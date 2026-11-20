@@ -1,0 +1,132 @@
+// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+
+// Package catalog holds the list of Windows image definitions Kryton
+// knows how to deploy — a built-in default set, or an operator-supplied
+// JSON file — keyed by image ID and exposed to the API, CLI, and
+// provider layers.
+package catalog
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+
+	"github.com/zyvorai/kryton/internal/model"
+)
+
+// Catalog is an immutable, ID-keyed set of deployable Windows images,
+// built once at startup by Load. It is safe for concurrent reads.
+type Catalog struct {
+	items map[string]model.Image
+}
+
+type fileFormat struct {
+	Images []model.Image `json:"images"`
+}
+
+// Load builds a Catalog. With path empty it uses Kryton's built-in image
+// defaults; otherwise it reads and validates an operator-supplied
+// KRYTON_IMAGES_FILE JSON document (unique, non-empty IDs/names),
+// replacing the defaults entirely rather than merging with them.
+func Load(path string) (*Catalog, error) {
+	items := append(defaults(), linuxDefaults()...)
+	if path != "" {
+		// #nosec G304 -- KRYTON_IMAGES_FILE is operator configuration
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read images file: %w", err)
+		}
+		var f fileFormat
+		if err := json.Unmarshal(b, &f); err != nil {
+			return nil, fmt.Errorf("parse images file: %w", err)
+		}
+		if len(f.Images) == 0 {
+			return nil, fmt.Errorf("images file contains no images")
+		}
+		items = f.Images
+	}
+	c := &Catalog{items: map[string]model.Image{}}
+	for _, img := range items {
+		if img.ID == "" || img.Name == "" {
+			return nil, fmt.Errorf("image id and name are required")
+		}
+		if _, exists := c.items[img.ID]; exists {
+			return nil, fmt.Errorf("duplicate image id %q", img.ID)
+		}
+		if img.OS == "" {
+			img.OS = "windows"
+		}
+		if img.Architecture == "" {
+			img.Architecture = "amd64"
+		}
+		if img.Firmware == "" {
+			img.Firmware = "efi"
+		}
+		if len(img.Providers) == 0 {
+			img.Providers = []string{"kubevirt"}
+			if img.OS == "linux" {
+				img.Providers = append(img.Providers, "libvirt")
+			}
+			if img.DockurVersion != "" {
+				img.Providers = append(img.Providers, "dockur")
+			}
+		}
+		if img.OS != "linux" && img.OS != "windows" {
+			return nil, fmt.Errorf("invalid OS for %q", img.ID)
+		}
+		if img.Architecture != "amd64" {
+			return nil, fmt.Errorf("unsupported architecture for %q: first release supports amd64", img.ID)
+		}
+		if img.Firmware != "efi" && img.Firmware != "bios" {
+			return nil, fmt.Errorf("invalid firmware for %q", img.ID)
+		}
+		c.items[img.ID] = img
+	}
+	return c, nil
+}
+
+// List returns every image in the catalog, sorted by display Name.
+func (c *Catalog) List() []model.Image {
+	out := make([]model.Image, 0, len(c.items))
+	for _, img := range c.items {
+		out = append(out, img)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Get looks up one image by ID.
+func (c *Catalog) Get(id string) (model.Image, bool) {
+	img, ok := c.items[id]
+	return img, ok
+}
+
+func defaults() []model.Image {
+	return []model.Image{
+		{ID: "windows-server-2025", Name: "Windows Server 2025", Version: "2025", Family: "windows-server", Description: "Enterprise Windows Server image reference for CDI DataSource / dockur provisioning.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 80, DockurVersion: "2025", Tags: []string{"server", "enterprise", "dockur"}},
+		{ID: "windows-server-2022", Name: "Windows Server 2022", Version: "2022", Family: "windows-server", Description: "Stable Windows Server image for application and infrastructure workloads.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 80, DockurVersion: "2022", Tags: []string{"server", "lts", "dockur"}},
+		{ID: "windows-server-2019", Name: "Windows Server 2019", Version: "2019", Family: "windows-server", Description: "Windows Server 2019 for legacy application labs.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 80, DockurVersion: "2019", Tags: []string{"server", "legacy", "dockur"}},
+		{ID: "windows-server-2016", Name: "Windows Server 2016", Version: "2016", Family: "windows-server", Description: "Windows Server 2016 for compatibility testing.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 80, DockurVersion: "2016", Tags: []string{"server", "legacy", "dockur"}},
+		{ID: "windows-11-enterprise", Name: "Windows 11 Enterprise", Version: "25H2", Family: "windows-desktop", Description: "Enterprise Windows desktop image for developer and test workspaces.", MinCPU: 4, MinMemoryMiB: 8192, DefaultDiskGB: 96, DockurVersion: "11e", Tags: []string{"desktop", "developer", "dockur"}},
+		{ID: "windows-11-pro", Name: "Windows 11 Pro", Version: "25H2", Family: "windows-desktop", Description: "Windows 11 Pro for general desktop labs.", MinCPU: 4, MinMemoryMiB: 8192, DefaultDiskGB: 80, DockurVersion: "11", Tags: []string{"desktop", "dockur"}},
+		{ID: "windows-11-ltsc", Name: "Windows 11 LTSC", Version: "LTSC 2024", Family: "windows-desktop", Description: "Windows 11 LTSC — long-term servicing channel for locked-down labs.", MinCPU: 4, MinMemoryMiB: 8192, DefaultDiskGB: 64, DockurVersion: "11l", Tags: []string{"desktop", "ltsc", "dockur"}},
+		{ID: "windows-10-enterprise", Name: "Windows 10 Enterprise", Version: "22H2", Family: "windows-desktop", Description: "Windows 10 Enterprise for legacy desktop workloads.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 64, DockurVersion: "10e", Tags: []string{"desktop", "legacy", "dockur"}},
+		{ID: "windows-10-pro", Name: "Windows 10 Pro", Version: "22H2", Family: "windows-desktop", Description: "Windows 10 Pro for general desktop labs.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 64, DockurVersion: "10", Tags: []string{"desktop", "legacy", "dockur"}},
+		{ID: "windows-10-ltsc", Name: "Windows 10 LTSC", Version: "LTSC 2021", Family: "windows-desktop", Description: "Windows 10 LTSC for long-lived lab images.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 64, DockurVersion: "10l", Tags: []string{"desktop", "ltsc", "dockur"}},
+		{ID: "windows-tiny11", Name: "Tiny11", Version: "tiny11", Family: "windows-desktop", Description: "Compact Windows 11 derivative for lightweight dockur labs.", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 48, DockurVersion: "tiny11", Tags: []string{"desktop", "compact", "dockur"}},
+		{ID: "windows-tiny11-core", Name: "Tiny11 Core", Version: "core11", Family: "windows-desktop", Description: "Minimal Tiny11 Core image for fast dockur boots.", MinCPU: 2, MinMemoryMiB: 2048, DefaultDiskGB: 32, DockurVersion: "core11", Tags: []string{"desktop", "compact", "dockur"}},
+		{ID: "windows-tiny10", Name: "Tiny10", Version: "tiny10", Family: "windows-desktop", Description: "Compact Windows 10 derivative for lightweight dockur labs.", MinCPU: 2, MinMemoryMiB: 2048, DefaultDiskGB: 32, DockurVersion: "tiny10", Tags: []string{"desktop", "compact", "legacy", "dockur"}},
+		{ID: "windows-server-2012", Name: "Windows Server 2012", Version: "2012", Family: "windows-server", Description: "Windows Server 2012 for legacy compatibility testing (end of support).", MinCPU: 2, MinMemoryMiB: 4096, DefaultDiskGB: 64, DockurVersion: "2012", Tags: []string{"server", "legacy", "dockur"}},
+	}
+}
+
+// DockurVersion implements dockur.VersionResolver.
+func (c *Catalog) DockurVersion(imageID string) (string, bool) {
+	img, ok := c.items[imageID]
+	if !ok || img.DockurVersion == "" {
+		return "", false
+	}
+	return img.DockurVersion, true
+}

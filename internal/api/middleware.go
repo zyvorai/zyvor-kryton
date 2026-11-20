@@ -1,0 +1,226 @@
+// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+
+package api
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/time/rate"
+
+	"github.com/zyvorai/kryton/internal/auth"
+	"github.com/zyvorai/kryton/internal/id"
+)
+
+type requestIDKey struct{}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) { w.status = code; w.ResponseWriter.WriteHeader(code) }
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Hijack lets websocket upgrades (VNC console) reach the underlying connection.
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response does not implement http.Hijacker")
+	}
+	return h.Hijack()
+}
+
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (s *Server) requestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rid := r.Header.Get("X-Request-ID")
+		if rid == "" {
+			rid = id.New()
+		}
+		w.Header().Set("X-Request-ID", rid)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestIDKey{}, rid)))
+	})
+}
+func requestID(ctx context.Context) string { v, _ := ctx.Value(requestIDKey{}).(string); return v }
+func (s *Server) security(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		path := r.URL.Path
+		// Console HTML is embedded in the dashboard iframe and loads noVNC from jsDelivr.
+		if strings.Contains(path, "/console") || strings.HasSuffix(path, "/vnc") || strings.HasSuffix(path, "/novnc-rfb.js") || strings.HasSuffix(path, "/console-viewer.js") {
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'")
+		} else {
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// cors enables browser clients from other Zyvor products (Axiom, Haven, marketing) to call Kryton.
+// Configure with KRYTON_CORS_ORIGINS (comma-separated; use * for lab/dev).
+func (s *Server) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if allow := corsAllowOrigin(r, s.corsOrigins); allow != "" {
+			w.Header().Set("Access-Control-Allow-Origin", allow)
+			w.Header().Set("Vary", "Origin")
+			if allow != "*" {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-Request-ID, X-Kryton-User, X-Kryton-Role, X-Kryton-Projects, X-Kryton-Grants, X-Kryton-Proxy-Secret")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+			w.Header().Set("Access-Control-Max-Age", "600")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// ParseCORSOrigins splits KRYTON_CORS_ORIGINS (comma-separated, "*" for
+// any origin) into the list cors uses for Access-Control-Allow-Origin.
+func ParseCORSOrigins(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+func (s *Server) accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
+		status := sw.status
+		if status == 0 {
+			status = 200
+		}
+		s.metrics.Request(status >= 400)
+		s.metrics.ObserveRequest(r.Method, routeLabel(r.URL.Path), status, time.Since(start).Seconds())
+		if status == http.StatusUnauthorized && strings.HasPrefix(r.URL.Path, "/api/") {
+			s.metrics.AuthFailed()
+		}
+		level := slog.LevelInfo
+		if status >= 500 {
+			level = slog.LevelError
+		}
+		s.log.Log(r.Context(), level, "http request", "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(start).Milliseconds(), "request_id", requestID(r.Context()))
+	})
+}
+func (s *Server) recoverer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if x := recover(); x != nil {
+				s.log.Error("panic recovered", "panic", x, "stack", string(debug.Stack()), "request_id", requestID(r.Context()))
+				s.writeAPIError(w, r, http.StatusInternalServerError, "INTERNAL", "internal server error", "Unexpected panic — check krytond logs with the request id.")
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// rateLimiter is a per-key token bucket, one bucket per API caller
+// (keyed by API-key name, falling back to remote address when
+// unauthenticated). It sweeps idle buckets opportunistically so
+// long-running processes with many distinct callers don't grow
+// unbounded.
+type rateLimiter struct {
+	mu        sync.Mutex
+	buckets   map[string]*rateLimiterEntry
+	rps       rate.Limit
+	burst     int
+	lastSweep time.Time
+}
+
+type rateLimiterEntry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+const rateLimiterIdleTTL = 10 * time.Minute
+
+// newRateLimiter builds a rateLimiter, or returns nil (meaning "disabled")
+// when rps <= 0 — the zero-value KRYTON_RATE_LIMIT_RPS default.
+func newRateLimiter(rps, burst int) *rateLimiter {
+	if rps <= 0 {
+		return nil
+	}
+	if burst <= 0 {
+		burst = rps
+	}
+	return &rateLimiter{buckets: map[string]*rateLimiterEntry{}, rps: rate.Limit(rps), burst: burst}
+}
+
+func (rl *rateLimiter) allow(key string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := time.Now()
+	if now.Sub(rl.lastSweep) > rateLimiterIdleTTL {
+		for k, e := range rl.buckets {
+			if now.Sub(e.lastSeen) > rateLimiterIdleTTL {
+				delete(rl.buckets, k)
+			}
+		}
+		rl.lastSweep = now
+	}
+	e, ok := rl.buckets[key]
+	if !ok {
+		e = &rateLimiterEntry{limiter: rate.NewLimiter(rl.rps, rl.burst)}
+		rl.buckets[key] = e
+	}
+	e.lastSeen = now
+	return e.limiter.Allow()
+}
+
+// rateLimit enforces s.rateLimiter (a no-op pass-through when rate
+// limiting is disabled). It must run after auth resolution — it keys on
+// the resolved Principal.Name so each API-key gets its own bucket, and
+// only unauthenticated callers (disabled auth mode) share a bucket per
+// remote address.
+func (s *Server) rateLimit(next http.Handler) http.Handler {
+	if s.rateLimiter == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := auth.FromContext(r.Context()).Name
+		if key == "" {
+			key = r.RemoteAddr
+		}
+		if !s.rateLimiter.allow(key) {
+			s.metrics.RateLimited()
+			s.writeAPIError(w, r, http.StatusTooManyRequests, "RATE_LIMITED", "too many requests", "Slow down and retry after a short backoff.")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

@@ -1,0 +1,197 @@
+// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+
+// Package events implements Kryton's CloudEvents-formatted audit trail:
+// a Bus that records machine lifecycle events in memory (optionally
+// persisted to an append-only JSONL file), fans them out to SSE
+// subscribers for GET /api/v1/events/stream, and optionally delivers
+// them to an HMAC-SHA256-signed webhook.
+package events
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/zyvorai/kryton/internal/id"
+)
+
+// Event is a CloudEvents 1.0 structured-mode envelope for one Kryton
+// lifecycle occurrence (e.g. "io.kryton.machine.created"). Subject is
+// typically "machines/{id}" or "snapshots/{id}"; Data carries the
+// event-specific payload (project, machineId, name, state, ...).
+type Event struct {
+	SpecVersion     string         `json:"specversion"`
+	ID              string         `json:"id"`
+	Source          string         `json:"source"`
+	Type            string         `json:"type"`
+	Subject         string         `json:"subject,omitempty"`
+	Time            time.Time      `json:"time"`
+	DataContentType string         `json:"datacontenttype"`
+	Data            map[string]any `json:"data,omitempty"`
+}
+
+// Bus is Kryton's event hub: an in-memory ring buffer of recent Events,
+// fanned out live to any number of Subscribe channels, optionally backed
+// by an append-only JSONL file (for history that survives restarts) and
+// an outbound webhook. Safe for concurrent use.
+type Bus struct {
+	mu            sync.RWMutex
+	history       []Event
+	maxHistory    int
+	subs          map[chan Event]struct{}
+	sinks         []func(Event)
+	webhook       string
+	webhookSecret string
+	store         *fileStore
+	http          *http.Client
+	log           *slog.Logger
+}
+
+// New builds a Bus keeping at most maxHistory events in memory
+// (defaulting to 500 if less than 1). If filePath is non-empty it is
+// opened as the persistent JSONL store and its existing content is
+// loaded as initial history; an empty webhook disables webhook delivery.
+func New(maxHistory int, webhook, webhookSecret, filePath string, log *slog.Logger) (*Bus, error) {
+	if maxHistory < 1 {
+		maxHistory = 500
+	}
+	store, err := openFileStore(filePath)
+	if err != nil {
+		return nil, err
+	}
+	b := &Bus{
+		maxHistory: maxHistory, subs: map[chan Event]struct{}{},
+		webhook: webhook, webhookSecret: webhookSecret, store: store,
+		http: &http.Client{Timeout: 3 * time.Second}, log: log,
+	}
+	if store != nil {
+		loaded, err := loadFileStore(filePath, maxHistory)
+		if err != nil {
+			return nil, err
+		}
+		b.history = loaded
+	}
+	return b, nil
+}
+
+// Publish records a new Event, delivering it to history, live
+// subscribers, the persistent store (if configured), and the webhook (if
+// configured) — in that order, best-effort: a persistence or webhook
+// failure is logged but never returned to the caller.
+func (b *Bus) Publish(ctx context.Context, eventType, subject string, data map[string]any) Event {
+	e := Event{SpecVersion: "1.0", ID: id.New(), Source: "kryton://control-plane", Type: eventType, Subject: subject, Time: time.Now().UTC(), DataContentType: "application/json", Data: data}
+	b.mu.Lock()
+	b.history = append([]Event{e}, b.history...)
+	if len(b.history) > b.maxHistory {
+		b.history = b.history[:b.maxHistory]
+	}
+	for ch := range b.subs {
+		select {
+		case ch <- e:
+		default:
+		}
+	}
+	webhook := b.webhook
+	sinks := b.sinks
+	b.mu.Unlock()
+	for _, fn := range sinks {
+		fn(e)
+	}
+	if b.store != nil {
+		if err := b.store.append(e); err != nil && b.log != nil {
+			b.log.Warn("event persist failed", "error", err)
+		}
+	}
+	if webhook != "" {
+		b.deliverWebhook(ctx, webhook, e)
+	}
+	return e
+}
+
+// AddSink registers fn to be called synchronously with every published
+// Event (used by the per-project webhook dispatcher). fn must not block.
+func (b *Bus) AddSink(fn func(Event)) {
+	b.mu.Lock()
+	b.sinks = append(b.sinks, fn)
+	b.mu.Unlock()
+}
+
+// SetWebhookURL updates the webhook target live; pass "" to disable delivery.
+func (b *Bus) SetWebhookURL(url string) {
+	b.mu.Lock()
+	b.webhook = strings.TrimSpace(url)
+	b.mu.Unlock()
+}
+
+// List returns the most recent events, newest first, capped at limit
+// (limit <= 0 or larger than history returns everything available).
+func (b *Bus) List(limit int) []Event {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if limit < 1 || limit > len(b.history) {
+		limit = len(b.history)
+	}
+	out := make([]Event, limit)
+	copy(out, b.history[:limit])
+	return out
+}
+
+// Subscribe registers a new live listener and returns its channel plus a
+// cancel func the caller must invoke exactly once (e.g. via defer) to
+// unregister and close the channel — typically on SSE client disconnect.
+// The channel is buffered but Publish drops events for a subscriber that
+// isn't keeping up rather than blocking.
+func (b *Bus) Subscribe() (<-chan Event, func()) {
+	ch := make(chan Event, 32)
+	b.mu.Lock()
+	b.subs[ch] = struct{}{}
+	b.mu.Unlock()
+	cancel := func() {
+		b.mu.Lock()
+		if _, ok := b.subs[ch]; ok {
+			delete(b.subs, ch)
+			close(ch)
+		}
+		b.mu.Unlock()
+	}
+	return ch, cancel
+}
+
+func (b *Bus) deliverWebhook(parent context.Context, webhook string, e Event) {
+	body, err := json.Marshal(e)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook, bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/cloudevents+json")
+	if b.webhookSecret != "" {
+		mac := hmac.New(sha256.New, []byte(b.webhookSecret))
+		_, _ = mac.Write(body)
+		req.Header.Set("X-Kryton-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	}
+	res, err := b.http.Do(req)
+	if err != nil {
+		if b.log != nil {
+			b.log.Warn("event webhook failed", "error", err)
+		}
+		return
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 && b.log != nil {
+		b.log.Warn("event webhook returned error", "status", res.StatusCode)
+	}
+}

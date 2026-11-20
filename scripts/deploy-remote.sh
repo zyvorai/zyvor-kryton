@@ -1,0 +1,774 @@
+#!/usr/bin/env bash
+# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+# ─────────────────────────────────────────────────────────────
+# Kryton — Remote deployment (SSH + rsync)
+#
+# Profiles:
+#   default     Sync → ensure Go → build on remote → install → start demo service
+#   --quick     Rsync + remote build only (skip system Go install if present)
+#   --quick --build-local   Rsync pre-built Linux binaries (build locally first)
+#
+# Auth: SSH keys (recommended). Password via sshpass is supported but deprecated.
+# ─────────────────────────────────────────────────────────────
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VERSION="1.0.0"
+REMOTE_DIR=""
+DEPLOY_PROFILE="full"
+DEPLOY_LOG="${KRYTON_DEPLOY_LOG:-${HOME}/.kryton/deploy-$(date +%Y%m%d-%H%M%S).log}"
+# Listen port: --port / KRYTON_PORT win; otherwise reuse the remote unit's
+# existing KRYTON_ADDR; otherwise default 8080. Redeploys must not silently
+# move an already-running lab off its configured port.
+PORT_EXPLICIT=false
+if [ -n "${KRYTON_PORT:-}" ]; then
+    PORT_EXPLICIT=true
+fi
+KRYTON_PORT="${KRYTON_PORT:-8080}"
+
+QUICK_MODE=false
+UNINSTALL=false
+KEY_AUTH=false
+DRY_RUN=false
+SKIP_SYNC=false
+SKIP_VERIFY=false
+BUILD_LOCAL=false
+VERIFY_ONLY=false
+PREFLIGHT_ONLY=false
+NO_SERVICE=false
+VERBOSE=false
+ENABLE_APIKEY=false
+PROVIDER=""
+SSH_RETRIES="${KRYTON_SSH_RETRIES:-3}"
+POSITIONAL=()
+
+usage() {
+    cat <<EOF
+Kryton remote deploy v${VERSION}
+
+Usage:
+  $0 <host> <user> [options]
+  $0 user@host [options]
+
+Profiles:
+  (default)                 Full remote build + Go toolchain if needed + systemd demo unit
+  --quick                   Rsync + go build on remote (skip toolchain install when Go exists)
+  --quick --build-local     Install locally built Linux binaries (Linux build host required)
+
+Options:
+  --help              Show this help
+  --dry-run           Print steps without SSH/rsync/build
+  --preflight-only    SSH + disk/sudo checks, then exit
+  --verify-only       Hit /readyz on the remote host only
+  --skip-sync         Skip rsync (sources already on host)
+  --skip-verify       Skip health check
+  --build-local       With --quick: use local bin/krytond + bin/krytonctl
+  --no-service        Install binaries only (do not enable systemd unit)
+  --key               SSH key auth (clear password)
+  --uninstall         Stop service and remove install
+  --port <N>          Listen port (sets KRYTON_ADDR=:<N>). Default: existing remote
+                      unit port if present, else 8080 / \$KRYTON_PORT
+  --apikey            Enable API-key auth on the unit (writes/ensures /etc/kryton/keys.json
+                      + lab.token; preserves existing keys). Default new units stay
+                      auth-disabled until this flag (or a prior hardened unit).
+  --provider <name>   Set KRYTON_PROVIDER on the unit (demo|libvirt|kubevirt|dockur).
+                      Default: keep the existing unit's provider (new units: demo).
+                      libvirt also preflights virsh/KVM/network/qemu-img/genisoimage
+                      and creates /var/lib/kryton/{machines,images}.
+  -v, --verbose       Verbose rsync
+
+Environment:
+  KRYTON_DEPLOY_LOG    Log file path
+  KRYTON_SSH_RETRIES   SSH retry count (default: 3)
+  KRYTON_PORT          Listen port (same as --port; preserved across redeploys
+                       when neither --port nor KRYTON_PORT is set)
+  DEPLOY_DIR           Override remote staging dir (default: ~/.deployments/kryton)
+  KRYTON_LIBVIRT_URI, KRYTON_LIBVIRT_NETWORK, KRYTON_LIBVIRT_DATA_DIR
+                       With --provider libvirt: written to /etc/kryton/env when set
+  KRYTON_QEMU_GROUP    With --provider libvirt: group owning the machine dir (default: kvm)
+
+Examples:
+  $0 <user>@<host> --key
+  $0 <user>@<host> --quick
+  $0 <user>@<host> --build-local --quick
+  $0 <user>@<host> --port 18080 --apikey --key
+  $0 <host> <user> --key --apikey --provider libvirt
+  KRYTON_PORT=18080 $0 <user>@<host> --key
+  make deploy-remote H=<host> U=<user> ARGS='--port 18080 --apikey'
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help)        usage; exit 0 ;;
+        --quick)          QUICK_MODE=true; DEPLOY_PROFILE="quick"; shift ;;
+        --uninstall)      UNINSTALL=true; shift ;;
+        --key)            KEY_AUTH=true; shift ;;
+        --dry-run)        DRY_RUN=true; shift ;;
+        --skip-sync)      SKIP_SYNC=true; shift ;;
+        --skip-verify)    SKIP_VERIFY=true; shift ;;
+        --build-local)    BUILD_LOCAL=true; shift ;;
+        --verify-only)    VERIFY_ONLY=true; shift ;;
+        --preflight-only) PREFLIGHT_ONLY=true; shift ;;
+        --no-service)     NO_SERVICE=true; shift ;;
+        --port)
+            [ -n "${2:-}" ] || { echo "--port requires a value" >&2; exit 1; }
+            KRYTON_PORT="$2"
+            PORT_EXPLICIT=true
+            shift 2 ;;
+        --apikey)         ENABLE_APIKEY=true; shift ;;
+        --provider)
+            [ -n "${2:-}" ] || { echo "--provider requires a value" >&2; exit 1; }
+            PROVIDER="$2"
+            shift 2 ;;
+        -v|--verbose)     VERBOSE=true; shift ;;
+        *)
+            POSITIONAL+=("$1")
+            shift
+            ;;
+    esac
+done
+
+case "${PROVIDER}" in
+    ''|demo|libvirt|kubevirt|dockur) ;;
+    *) echo "invalid provider: '${PROVIDER}' (demo|libvirt|kubevirt|dockur)" >&2; exit 1 ;;
+esac
+
+case "${KRYTON_PORT}" in
+    ''|*[!0-9]*|0) echo "invalid port: '${KRYTON_PORT}' (must be a positive integer)" >&2; exit 1 ;;
+esac
+
+TARGET_HOST="${POSITIONAL[0]:-}"
+TARGET_USER="${POSITIONAL[1]:-root}"
+TARGET_PASS="${POSITIONAL[2]:-}"
+
+if [ "$KEY_AUTH" = true ]; then
+    TARGET_PASS=""
+fi
+
+if [[ -n "${TARGET_HOST}" && "${TARGET_HOST}" == *"@"* ]]; then
+    TARGET_USER="${TARGET_HOST%%@*}"
+    TARGET_HOST="${TARGET_HOST#*@}"
+fi
+
+_use_color() { [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; }
+if _use_color; then
+    C_OK=$'\033[32m'; C_FAIL=$'\033[31m'; C_INFO=$'\033[36m'; C_WARN=$'\033[33m'
+    C_DIM=$'\033[2m'; C_BOLD=$'\033[1m'; C_CYAN=$'\033[96m'; C_RST=$'\033[0m'
+else
+    C_OK= C_FAIL= C_INFO= C_WARN= C_DIM= C_BOLD= C_CYAN= C_RST=
+fi
+
+_log_file() { mkdir -p "$(dirname "$DEPLOY_LOG")" 2>/dev/null || true; echo "[$(date -Iseconds)] $*" >>"$DEPLOY_LOG" 2>/dev/null || true; }
+ok()   { echo "${C_OK}  ✓ $*${C_RST}"; _log_file "OK $*"; }
+fail() { echo "${C_FAIL}  ✗ $*${C_RST}" >&2; _log_file "FAIL $*"; exit 1; }
+info() { echo "${C_INFO}  → $*${C_RST}"; _log_file "INFO $*"; }
+warn() { echo "${C_WARN}  ! $*${C_RST}"; _log_file "WARN $*"; }
+dry()  { echo "${C_DIM}  (dry) $*${C_RST}"; _log_file "DRY $*"; }
+
+print_banner() {
+    local target="${TARGET_USER}@${TARGET_HOST}"
+    echo ""
+    echo "${C_CYAN}${C_BOLD}  Kryton remote deploy${C_RST}  ${C_DIM}v${VERSION}${C_RST}"
+    echo "${C_DIM}  ${target}  ·  ${DEPLOY_PROFILE}${C_RST}"
+    [ "$DRY_RUN" = true ] && echo "${C_WARN}  dry-run — no remote changes${C_RST}"
+    echo ""
+}
+
+STEP_T0=0
+STEP_IDX=0
+step_begin() {
+    STEP_IDX=$((STEP_IDX + 1))
+    STEP_T0=$(date +%s)
+    echo ""
+    echo "${C_BOLD}${C_CYAN}  Step ${STEP_IDX}: $*${C_RST}"
+    _log_file "STEP ${STEP_IDX}: $*"
+}
+step_end() { echo "${C_DIM}  finished in $(( $(date +%s) - STEP_T0 ))s${C_RST}"; }
+
+SSH_OPTS="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=15 -o ServerAliveInterval=30"
+if [ -z "${TARGET_PASS}" ]; then
+    SSH_OPTS+=" -o BatchMode=yes -o PreferredAuthentications=publickey"
+fi
+
+_ssh_once() {
+    if [ -n "${TARGET_PASS}" ] && command -v sshpass &>/dev/null; then
+        export SSHPASS="${TARGET_PASS}"
+        sshpass -e ssh ${SSH_OPTS} "${TARGET_USER}@${TARGET_HOST}" "$@"
+    else
+        ssh ${SSH_OPTS} "${TARGET_USER}@${TARGET_HOST}" "$@"
+    fi
+}
+
+_ssh() {
+    local attempt=1 max="${SSH_RETRIES}"
+    while [ "$attempt" -le "$max" ]; do
+        if _ssh_once "$@"; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        if [ "$attempt" -le "$max" ]; then
+            local _d=$(( 2 * (attempt - 1) )); _d=$(( _d < 2 ? 2 : _d > 30 ? 30 : _d ))
+            warn "SSH retry ${attempt}/${max}" && sleep "${_d}"
+        fi
+    done
+    return 1
+}
+
+# Prefer an explicit --port / KRYTON_PORT; otherwise keep whatever the remote
+# unit already listens on so quick redeploys do not bounce labs off :18080 → :8080.
+resolve_listen_port() {
+    if [ "$PORT_EXPLICIT" = true ]; then
+        info "Listen port ${KRYTON_PORT} (explicit)"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        info "Listen port ${KRYTON_PORT} (default; dry-run skips remote probe)"
+        return 0
+    fi
+    local existing=""
+    # The probe lives in a temp file, not a heredoc inside $( ... ): bash 3.2 (macOS) mis-parses the
+    # `case ... )` patterns there and expands $port locally under `set -u`.
+    local probe_file; probe_file="$(mktemp)"
+    cat >"$probe_file" <<'PROBE'
+unit=/etc/systemd/system/kryton.service
+envf=/etc/kryton/env
+for f in "$envf" "$unit"; do
+  [ -f "$f" ] || continue
+  line=$(grep -E '^[[:space:]]*(Environment=)?KRYTON_ADDR=' "$f" 2>/dev/null | tail -1 || true)
+  [ -n "$line" ] || continue
+  addr=${line#*KRYTON_ADDR=}
+  addr=${addr%%[[:space:]]*}
+  addr=${addr#\"}
+  addr=${addr%\"}
+  case "$addr" in
+    :[0-9]*|[0-9]*:[0-9]*)
+      port=${addr##*:}
+      case "$port" in
+        ''|*[!0-9]*|0) ;;
+        *) printf '%s\n' "$port"; exit 0 ;;
+      esac
+      ;;
+  esac
+done
+PROBE
+    existing="$(_ssh_once 'bash -s' <"$probe_file" 2>/dev/null || true)"
+    rm -f "$probe_file"
+    existing="$(printf '%s' "$existing" | tr -d '[:space:]')"
+    case "${existing}" in
+        ''|*[!0-9]*|0) info "Listen port ${KRYTON_PORT} (default)" ;;
+        *)
+            KRYTON_PORT="$existing"
+            info "Listen port ${KRYTON_PORT} (preserving remote unit)"
+            ;;
+    esac
+}
+
+# Install or patch the systemd unit. New installs get a demo unit; existing
+# units only get KRYTON_ADDR updated so auth/keys/provider survive redeploys.
+# With ENABLE_APIKEY=true, ensure keys and force apikey auth on the unit.
+remote_install_service() {
+    _ssh env KRYTON_PORT="${KRYTON_PORT}" ENABLE_APIKEY="${ENABLE_APIKEY}" REMOTE_STAGING="${REMOTE_DIR}" \
+        PROVIDER="${PROVIDER}" LIBVIRT_URI="${KRYTON_LIBVIRT_URI:-}" LIBVIRT_NETWORK="${KRYTON_LIBVIRT_NETWORK:-}" \
+        LIBVIRT_DATA_DIR="${KRYTON_LIBVIRT_DATA_DIR:-}" QEMU_GROUP="${KRYTON_QEMU_GROUP:-}" bash <<'REMOTE'
+set -euo pipefail
+SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+UNIT=/etc/systemd/system/kryton.service
+ADDR=":${KRYTON_PORT}"
+KEYS_DIR=/etc/kryton
+KEYS_FILE="${KEYS_DIR}/keys.json"
+TOKEN_FILE="${KEYS_DIR}/lab.token"
+
+ensure_apikeys() {
+  $SUDO mkdir -p "${KEYS_DIR}"
+  if [ -x "${REMOTE_STAGING}/scripts/ensure-api-keys.sh" ]; then
+    # Script defaults to ~/.kryton; point it at /etc/kryton for the unit.
+    KRYTON_KEYS_DIR="${KEYS_DIR}" KRYTON_API_KEYS_FILE="${KEYS_FILE}" \
+      "${REMOTE_STAGING}/scripts/ensure-api-keys.sh" || true
+  fi
+  if [ ! -f "${KEYS_FILE}" ] || [ ! -s "${TOKEN_FILE}" ]; then
+    # Fallback: mint admin key with krytonctl when ensure script did not write /etc paths.
+    TOKEN="$(krytonctl generate-token 2>/dev/null || openssl rand -base64 32 | tr -d '/+=' | head -c 43)"
+    HASH="$(krytonctl hash-token "${TOKEN}" 2>/dev/null || printf '%s' "${TOKEN}" | sha256sum | awk '{print $1}')"
+    printf '%s\n' "${TOKEN}" | $SUDO tee "${TOKEN_FILE}" >/dev/null
+    $SUDO tee "${KEYS_FILE}" >/dev/null <<EOF
+{
+  "keys": [
+    {
+      "name": "lab-admin",
+      "sha256": "${HASH}",
+      "role": "admin",
+      "projects": ["*"]
+    }
+  ]
+}
+EOF
+  fi
+  $SUDO chmod 600 "${KEYS_FILE}" "${TOKEN_FILE}" 2>/dev/null || true
+  echo "API keys ready: ${KEYS_FILE} (token: ${TOKEN_FILE})"
+}
+
+patch_unit_apikey() {
+  local unit="$1"
+  if grep -qE '^Environment=KRYTON_AUTH_MODE=' "$unit"; then
+    $SUDO sed -i 's|^Environment=KRYTON_AUTH_MODE=.*|Environment=KRYTON_AUTH_MODE=apikey|' "$unit"
+  else
+    $SUDO sed -i '/^\[Service\]/a Environment=KRYTON_AUTH_MODE=apikey' "$unit"
+  fi
+  if grep -qE '^Environment=KRYTON_API_KEYS_FILE=' "$unit"; then
+    $SUDO sed -i "s|^Environment=KRYTON_API_KEYS_FILE=.*|Environment=KRYTON_API_KEYS_FILE=${KEYS_FILE}|" "$unit"
+  else
+    $SUDO sed -i "/^\[Service\]/a Environment=KRYTON_API_KEYS_FILE=${KEYS_FILE}" "$unit"
+  fi
+  if grep -qE '^Environment=KRYTON_LAB_AUTO_AUTH=' "$unit"; then
+    $SUDO sed -i 's|^Environment=KRYTON_LAB_AUTO_AUTH=.*|Environment=KRYTON_LAB_AUTO_AUTH=false|' "$unit"
+  else
+    $SUDO sed -i '/^\[Service\]/a Environment=KRYTON_LAB_AUTO_AUTH=false' "$unit"
+  fi
+}
+
+set_env_file() {
+  local key="$1" value="$2"
+  $SUDO mkdir -p /etc/kryton
+  $SUDO touch /etc/kryton/env
+  if grep -qE "^${key}=" /etc/kryton/env; then
+    $SUDO sed -i "s|^${key}=.*|${key}=${value}|" /etc/kryton/env
+  else
+    printf '%s=%s\n' "$key" "$value" | $SUDO tee -a /etc/kryton/env >/dev/null
+  fi
+}
+
+patch_unit_provider() {
+  local unit="$1"
+  if grep -qE '^Environment=KRYTON_PROVIDER=' "$unit"; then
+    $SUDO sed -i "s|^Environment=KRYTON_PROVIDER=.*|Environment=KRYTON_PROVIDER=${PROVIDER}|" "$unit"
+  else
+    $SUDO sed -i "/^\[Service\]/a Environment=KRYTON_PROVIDER=${PROVIDER}" "$unit"
+  fi
+}
+
+prepare_libvirt() {
+  local data_dir="${LIBVIRT_DATA_DIR:-/var/lib/kryton/machines}"
+  $SUDO mkdir -p "${data_dir}" /var/lib/kryton/images
+  # setgid + the QEMU group lets libvirt reach per-machine disks and seeds
+  # (created 0750/0640 by krytond) without making them world-readable.
+  local qemu_group="${QEMU_GROUP:-kvm}"
+  getent group "${qemu_group}" >/dev/null || { echo "QEMU group ${qemu_group} not found (set KRYTON_QEMU_GROUP)"; exit 1; }
+  $SUDO chmod 0711 /var/lib/kryton
+  $SUDO chown "root:${qemu_group}" "${data_dir}"
+  $SUDO chmod 2750 "${data_dir}"
+  $SUDO chmod 0755 /var/lib/kryton/images
+  [ -n "${LIBVIRT_URI}" ] && set_env_file KRYTON_LIBVIRT_URI "${LIBVIRT_URI}"
+  [ -n "${LIBVIRT_NETWORK}" ] && set_env_file KRYTON_LIBVIRT_NETWORK "${LIBVIRT_NETWORK}"
+  [ -n "${LIBVIRT_DATA_DIR}" ] && set_env_file KRYTON_LIBVIRT_DATA_DIR "${LIBVIRT_DATA_DIR}"
+  echo "libvirt data: ${data_dir} (images: /var/lib/kryton/images)"
+}
+
+if [ "${ENABLE_APIKEY}" = "true" ]; then
+  ensure_apikeys
+fi
+if [ "${PROVIDER}" = "libvirt" ]; then
+  prepare_libvirt
+fi
+
+if [ -f "$UNIT" ]; then
+  if grep -qE '^Environment=KRYTON_ADDR=' "$UNIT"; then
+    $SUDO sed -i "s|^Environment=KRYTON_ADDR=.*|Environment=KRYTON_ADDR=${ADDR}|" "$UNIT"
+  else
+    $SUDO sed -i "/^\[Service\]/a Environment=KRYTON_ADDR=${ADDR}" "$UNIT"
+  fi
+  $SUDO mkdir -p /etc/kryton
+  if [ -f /etc/kryton/env ]; then
+    if grep -qE '^KRYTON_ADDR=' /etc/kryton/env; then
+      $SUDO sed -i "s|^KRYTON_ADDR=.*|KRYTON_ADDR=${ADDR}|" /etc/kryton/env
+    else
+      printf 'KRYTON_ADDR=%s\n' "$ADDR" | $SUDO tee -a /etc/kryton/env >/dev/null
+    fi
+  fi
+  if [ "${ENABLE_APIKEY}" = "true" ]; then
+    patch_unit_apikey "$UNIT"
+  fi
+  if [ -n "${PROVIDER}" ]; then
+    patch_unit_provider "$UNIT"
+  fi
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable --now kryton.service
+  $SUDO systemctl restart kryton.service
+  echo "Updated existing unit listen address to ${ADDR}"
+  $SUDO systemctl --no-pager --full status kryton.service | head -20 || true
+  exit 0
+fi
+
+set_env_file KRYTON_ADDR "$ADDR"
+AUTH_MODE=disabled
+API_KEYS_LINE=""
+LAB_AUTO_LINE=""
+if [ "${ENABLE_APIKEY}" = "true" ]; then
+  AUTH_MODE=apikey
+  API_KEYS_LINE="Environment=KRYTON_API_KEYS_FILE=${KEYS_FILE}"
+  LAB_AUTO_LINE="Environment=KRYTON_LAB_AUTO_AUTH=false"
+fi
+$SUDO tee "$UNIT" >/dev/null <<UNIT
+[Unit]
+Description=Kryton virtualization control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/kryton/env
+Environment=KRYTON_PROVIDER=${PROVIDER:-demo}
+Environment=KRYTON_AUTH_MODE=${AUTH_MODE}
+${API_KEYS_LINE}
+${LAB_AUTO_LINE}
+Environment=KRYTON_ADDR=${ADDR}
+Environment=KRYTON_ALLOW_INSECURE=true
+ExecStart=/usr/local/bin/krytond
+Restart=on-failure
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+# Drop empty Environment lines if apikey off
+$SUDO sed -i '/^Environment=$/d' "$UNIT"
+$SUDO systemctl daemon-reload
+$SUDO systemctl enable --now kryton.service
+$SUDO systemctl --no-pager --full status kryton.service | head -20 || true
+REMOTE
+}
+
+_rsync() {
+    local opts="-az --delete"
+    [ "$VERBOSE" = true ] && opts+=" --progress"
+    if [ -n "${TARGET_PASS}" ] && command -v sshpass &>/dev/null; then
+        export SSHPASS="${TARGET_PASS}"
+        rsync ${opts} -e "sshpass -e ssh ${SSH_OPTS}" "$@"
+    else
+        rsync ${opts} -e "ssh ${SSH_OPTS}" "$@"
+    fi
+}
+
+validate() {
+    [ -n "${TARGET_HOST}" ] || { usage; exit 1; }
+    [ -f "${PROJECT_DIR}/go.mod" ] || fail "Not in kryton repo: ${PROJECT_DIR}"
+    if [ -n "${TARGET_PASS}" ]; then
+        warn "Password auth is deprecated. Prefer: ssh-copy-id ${TARGET_USER}@${TARGET_HOST}"
+        command -v sshpass &>/dev/null || fail "sshpass required for password auth"
+    fi
+}
+
+check_connectivity() {
+    info "SSH → ${TARGET_USER}@${TARGET_HOST}  log: ${DEPLOY_LOG}"
+    if [ "$DRY_RUN" = true ]; then
+        REMOTE_DIR="${DEPLOY_DIR:-${HOME}/.deployments/kryton}"
+        return 0
+    fi
+    _ssh "echo ok" &>/dev/null || fail "SSH failed — try: ssh-copy-id ${TARGET_USER}@${TARGET_HOST}"
+    ok "SSH connected"
+    local remote_home
+    remote_home=$(_ssh "echo \$HOME" 2>/dev/null | tr -d '\r')
+    remote_home="${remote_home:-/home/${TARGET_USER}}"
+    REMOTE_DIR="${DEPLOY_DIR:-${remote_home}/.deployments/kryton}"
+    info "Remote path: ${REMOTE_DIR}"
+}
+
+preflight_remote() {
+    info "Preflight on ${TARGET_HOST}..."
+    if [ "$DRY_RUN" = true ]; then return 0; fi
+    _ssh env PROVIDER="${PROVIDER}" LIBVIRT_URI="${KRYTON_LIBVIRT_URI:-qemu:///system}" \
+        LIBVIRT_NETWORK="${KRYTON_LIBVIRT_NETWORK:-default}" bash <<'REMOTE' || fail "Preflight failed"
+set -e
+echo "  host: $(hostname -f 2>/dev/null || hostname)"
+echo "  os:   $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || uname -s)"
+echo "  arch: $(uname -m)"
+echo "  disk: $(df -h / 2>/dev/null | awk 'NR==2{print $4 " free"}' || echo n/a)"
+if [ "$(id -u)" -ne 0 ]; then
+    if ! sudo -n true 2>/dev/null; then
+        echo "  non-root user needs passwordless sudo for install"
+        exit 1
+    fi
+    echo "  passwordless sudo: ok"
+else
+    echo "  running as root"
+fi
+command -v curl >/dev/null && echo "  curl: ok" || echo "  curl: missing (needed to fetch Go)"
+if [ "${PROVIDER}" = "libvirt" ]; then
+    SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+    missing=""
+    for tool in virsh qemu-img genisoimage; do
+        command -v "$tool" >/dev/null || missing="${missing} ${tool}"
+    done
+    if [ -n "${missing}" ]; then
+        echo "  libvirt tools missing:${missing} (apt install libvirt-daemon-system qemu-utils genisoimage)"
+        exit 1
+    fi
+    [ -e /dev/kvm ] || { echo "  /dev/kvm missing (enable hardware virtualization)"; exit 1; }
+    $SUDO virsh -c "${LIBVIRT_URI}" version >/dev/null || { echo "  cannot connect to ${LIBVIRT_URI}"; exit 1; }
+    if ! $SUDO virsh -c "${LIBVIRT_URI}" net-info "${LIBVIRT_NETWORK}" 2>/dev/null | grep -qE '^Active:[[:space:]]+yes'; then
+        $SUDO virsh -c "${LIBVIRT_URI}" net-start "${LIBVIRT_NETWORK}" >/dev/null || { echo "  libvirt network ${LIBVIRT_NETWORK} is not active"; exit 1; }
+    fi
+    echo "  libvirt: ${LIBVIRT_URI} · network ${LIBVIRT_NETWORK} active · /dev/kvm ok"
+fi
+REMOTE
+    ok "Preflight passed"
+}
+
+build_local_artifacts() {
+    step_begin "Local build (Linux release)"
+    if [ "$DRY_RUN" = true ]; then
+        dry "would run: make build"
+        step_end
+        return 0
+    fi
+    if [ "$(uname -s)" != "Linux" ]; then
+        fail "--build-local requires a Linux build host (same arch as remote)"
+    fi
+    (cd "${PROJECT_DIR}" && make build)
+    [ -f "${PROJECT_DIR}/bin/krytond" ] || fail "bin/krytond missing"
+    [ -f "${PROJECT_DIR}/bin/krytonctl" ] || fail "bin/krytonctl missing"
+    [ -f "${PROJECT_DIR}/bin/kryton-image" ] || fail "bin/kryton-image missing"
+    ok "Local binaries ready"
+    step_end
+}
+
+sync_files() {
+    if [ "$SKIP_SYNC" = true ]; then
+        info "Skipping rsync (--skip-sync)"
+        return 0
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        dry "would rsync → ${REMOTE_DIR}"
+        return 0
+    fi
+    step_begin "Sync source"
+    _ssh "mkdir -p '${REMOTE_DIR}'"
+    _rsync \
+        --exclude '.git' \
+        --exclude 'bin' \
+        --exclude '.ux-shots' \
+        --exclude '.deploy-last' \
+        --exclude '*.png' \
+        --exclude 'web/node_modules' \
+        --exclude '.venv-docs' \
+        --exclude '.claude' \
+        "${PROJECT_DIR}/" "${TARGET_USER}@${TARGET_HOST}:${REMOTE_DIR}/"
+    ok "Source synced to ${REMOTE_DIR}"
+    step_end
+}
+
+sync_binaries_only() {
+    step_begin "Sync release binaries"
+    if [ "$DRY_RUN" = true ]; then
+        dry "would rsync bin/krytond bin/krytonctl bin/kryton-image"
+        step_end
+        return 0
+    fi
+    [ -f "${PROJECT_DIR}/bin/krytond" ] || fail "Missing bin/krytond"
+    _ssh "mkdir -p '${REMOTE_DIR}/bin'"
+    _rsync "${PROJECT_DIR}/bin/krytond" "${TARGET_USER}@${TARGET_HOST}:${REMOTE_DIR}/bin/krytond"
+    _rsync "${PROJECT_DIR}/bin/krytonctl" "${TARGET_USER}@${TARGET_HOST}:${REMOTE_DIR}/bin/krytonctl"
+    _rsync "${PROJECT_DIR}/bin/kryton-image" "${TARGET_USER}@${TARGET_HOST}:${REMOTE_DIR}/bin/kryton-image"
+    ok "Binaries synced"
+    step_end
+}
+
+ensure_go_remote() {
+    step_begin "Ensure Go toolchain"
+    if [ "$DRY_RUN" = true ]; then
+        dry "would ensure go 1.27+"
+        step_end
+        return 0
+    fi
+    if [ "$QUICK_MODE" = true ]; then
+        if _ssh "command -v go >/dev/null"; then
+            ok "Go already present (quick)"
+            step_end
+            return 0
+        fi
+        warn "Go missing on remote — installing anyway"
+    fi
+    _ssh bash <<'REMOTE'
+set -euo pipefail
+if command -v go >/dev/null 2>&1; then
+    ver=$(go env GOVERSION 2>/dev/null || go version)
+    echo "Go present: ${ver}"
+    exit 0
+fi
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64|amd64) GOARCH=amd64 ;;
+  aarch64|arm64) GOARCH=arm64 ;;
+  *) echo "unsupported arch: $ARCH"; exit 1 ;;
+esac
+GO_VER="${KRYTON_GO_VERSION:-1.27.1}"
+TMP=$(mktemp -d)
+curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-${GOARCH}.tar.gz" -o "${TMP}/go.tgz"
+SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+$SUDO rm -rf /usr/local/go
+$SUDO tar -C /usr/local -xzf "${TMP}/go.tgz"
+rm -rf "$TMP"
+echo 'export PATH=/usr/local/go/bin:$PATH' | $SUDO tee /etc/profile.d/go.sh >/dev/null
+export PATH=/usr/local/go/bin:$PATH
+go version
+REMOTE
+    ok "Go ready"
+    step_end
+}
+
+build_install_remote() {
+    step_begin "Build + install on remote"
+    if [ "$DRY_RUN" = true ]; then
+        dry "would go build and install to /usr/local/bin"
+        step_end
+        return 0
+    fi
+    _ssh env REMOTE_STAGING="${REMOTE_DIR}" NO_SERVICE="$NO_SERVICE" bash <<'REMOTE'
+set -euo pipefail
+SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+export PATH=/usr/local/go/bin:${HOME}/go/bin:${PATH}
+cd "${REMOTE_STAGING}"
+mkdir -p bin
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/krytond ./cmd/krytond
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/krytonctl ./cmd/krytonctl
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o bin/kryton-image ./cmd/kryton-image
+$SUDO install -m755 bin/krytond /usr/local/bin/krytond
+$SUDO install -m755 bin/krytonctl /usr/local/bin/krytonctl
+$SUDO install -m755 bin/kryton-image /usr/local/bin/kryton-image
+echo "Installed: $(command -v krytond) $(command -v krytonctl) $(command -v kryton-image)"
+if [ "${NO_SERVICE}" = "true" ]; then
+  echo "Skipping systemd unit (--no-service)"
+fi
+REMOTE
+    if [ "$NO_SERVICE" != true ]; then
+        remote_install_service
+    fi
+    ok "Binaries installed"
+    step_end
+}
+
+install_binaries_quick() {
+    step_begin "Install synced binaries"
+    if [ "$DRY_RUN" = true ]; then
+        dry "would install remote bin/* to /usr/local/bin"
+        step_end
+        return 0
+    fi
+    _ssh env REMOTE_STAGING="${REMOTE_DIR}" NO_SERVICE="$NO_SERVICE" bash <<'REMOTE'
+set -euo pipefail
+SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+$SUDO install -m755 "${REMOTE_STAGING}/bin/krytond" /usr/local/bin/krytond
+$SUDO install -m755 "${REMOTE_STAGING}/bin/krytonctl" /usr/local/bin/krytonctl
+$SUDO install -m755 "${REMOTE_STAGING}/bin/kryton-image" /usr/local/bin/kryton-image
+if [ "${NO_SERVICE}" = "true" ]; then
+  echo "Skipping systemd unit (--no-service)"
+fi
+echo "Installed binaries"
+REMOTE
+    if [ "$NO_SERVICE" != true ]; then
+        remote_install_service
+    fi
+    ok "Quick install done"
+    step_end
+}
+
+verify_remote() {
+    step_begin "Verify health"
+    if [ "$DRY_RUN" = true ]; then
+        dry "would curl http://${TARGET_HOST}:${KRYTON_PORT}/readyz"
+        step_end
+        return 0
+    fi
+    local url="http://${TARGET_HOST}:${KRYTON_PORT}/readyz"
+    local i=0
+    while [ "$i" -lt 30 ]; do
+        if curl -fsS --connect-timeout 2 "$url" >/dev/null 2>&1; then
+            ok "Healthy at ${url}"
+            info "UI: http://${TARGET_HOST}:${KRYTON_PORT}/"
+            step_end
+            return 0
+        fi
+        # Fall back to SSH-local curl if host port not reachable from here
+        if _ssh "curl -fsS --connect-timeout 2 http://127.0.0.1:${KRYTON_PORT}/readyz" >/dev/null 2>&1; then
+            ok "Healthy on remote localhost:${KRYTON_PORT} (open firewall / tunnel for public access)"
+            info "ssh -L ${KRYTON_PORT}:127.0.0.1:${KRYTON_PORT} ${TARGET_USER}@${TARGET_HOST}"
+            step_end
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 1
+    done
+    fail "Health check failed for port ${KRYTON_PORT}"
+}
+
+uninstall_remote() {
+    step_begin "Uninstall"
+    if [ "$DRY_RUN" = true ]; then
+        dry "would stop kryton.service and remove binaries/staging"
+        step_end
+        return 0
+    fi
+    _ssh env REMOTE_STAGING="${REMOTE_DIR}" bash <<'REMOTE'
+set -euo pipefail
+SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+$SUDO systemctl disable --now kryton.service 2>/dev/null || true
+$SUDO rm -f /etc/systemd/system/kryton.service
+$SUDO systemctl daemon-reload 2>/dev/null || true
+$SUDO rm -f /usr/local/bin/krytond /usr/local/bin/krytonctl /usr/local/bin/kryton-image
+rm -rf "${REMOTE_STAGING}"
+echo "Removed Kryton install"
+REMOTE
+    ok "Uninstalled"
+    step_end
+}
+
+main() {
+    print_banner
+    validate
+    check_connectivity
+
+    if [ "$UNINSTALL" = true ]; then
+        uninstall_remote
+        exit 0
+    fi
+    if [ "$PREFLIGHT_ONLY" = true ]; then
+        preflight_remote
+        exit 0
+    fi
+    if [ "$VERIFY_ONLY" = true ]; then
+        resolve_listen_port
+        verify_remote
+        exit 0
+    fi
+
+    run_step_preflight() { step_begin "Preflight"; preflight_remote; step_end; }
+    run_step_preflight
+    resolve_listen_port
+
+    if [ "$BUILD_LOCAL" = true ]; then
+        build_local_artifacts
+        sync_binaries_only
+        install_binaries_quick
+    else
+        sync_files
+        if [ "$QUICK_MODE" = false ] || ! _ssh "command -v go >/dev/null" 2>/dev/null; then
+            ensure_go_remote
+        else
+            info "Skipping Go install (quick + go present)"
+        fi
+        build_install_remote
+    fi
+
+    if [ "$SKIP_VERIFY" = false ] && [ "$NO_SERVICE" = false ]; then
+        verify_remote
+    fi
+
+    echo ""
+    ok "Deploy complete"
+    info "Docs: docs/DEPLOY-REMOTE.md"
+}
+
+main

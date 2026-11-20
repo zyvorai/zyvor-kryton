@@ -1,0 +1,44 @@
+---
+hero:
+  eyebrow: GA
+  title: Kryton GA path (KubeVirt)
+---
+
+Production Kryton is the **kubevirt** provider behind Helm, hashed API keys, and TLS (ingress or process certificates). Dockur on `:7088` remains a lab installer, not GA, and the native `libvirt` provider for Linux is an initial host backend, not GA (Linux on `kubevirt` follows the KubeVirt GA path).
+
+## Must-have (implemented)
+
+| Area | What GA requires |
+|------|------------------|
+| Snapshots | Create, list, restore, delete via API, UI, and `krytonctl` |
+| Disk storage | CSI StorageClass with VolumeSnapshotClass (`rook-ceph-block` or `longhorn`) — see [STORAGE.md](STORAGE.md); Settings install + default |
+| Images | Catalog IDs match CDI `DataSource` objects; golden → `POST /api/v1/golden/{id}/bootstrap` |
+| Doctor | Auth, catalog, namespaces, DataSources, snapshot CRDs, StorageClass ↔ snapshot class |
+| Settings | Runtime config, connection test, Atlas integration ([ATLAS.md](ATLAS.md)) |
+| API | Public discovery `GET /api/v1`, OpenAPI `/openapi.yaml`, CORS for suite products |
+| Helm | ClusterRole includes `virtualmachinerestores`; optional Ingress; `auth.mode: apikey` |
+| Images | CI builds the container image on `main` (private registry; request access at sales@zyvor.dev) |
+| Events | Dashboard subscribes to `GET /api/v1/events/stream` with the same bearer token as REST |
+| Auth | Never `disabled` on kubevirt; store SHA-256 digests in `keys.json` |
+| Observability | Prometheus `/metrics` with a dedicated scrape token and Helm ServiceMonitor wiring; append-only audit log; per-project signed webhooks — see [OBSERVABILITY.md](OBSERVABILITY.md) |
+| Governance | Per-project API-key roles, per-project quotas, TTL defaults and scheduled power actions — single-replica only: schedules, webhook deliveries and the audit window are in-process state (see [ARCHITECTURE.md](ARCHITECTURE.md)) |
+
+## Operator checklist
+
+1. KubeVirt + CDI + snapshot feature gate (`./scripts/enable-kubevirt-snapshots.sh --skip-storage` or with a CSI backend).
+2. Snapshot-capable disks: **Rook Ceph** (`./scripts/enable-rook-ceph.sh`) or **Longhorn** (`./scripts/enable-kubevirt-snapshots.sh --storage longhorn`). See [STORAGE.md](STORAGE.md).
+3. Sysprepped qcow2 published as DataSources in `kryton-images` (same `KRYTON_STORAGE_CLASS` as VMs).
+4. Match **virtctl** to the cluster KubeVirt version before `virtctl image-upload`.
+5. `KRYTON_STORAGE_CLASS=rook-ceph-block` (or `longhorn`). Do not snapshot VMs on `rancher.io/local-path`.
+6. `helm upgrade --install` with `provider: kubevirt`, `auth.mode: apikey`, Ingress TLS, and `-f values-rook-ceph.yaml` (or `values-longhorn.yaml`).
+7. `krytonctl doctor` reports no `fail` findings.
+8. Create a machine, snapshot, restore, delete snapshot, then delete the machine.
+9. (Optional) Wire Atlas: Settings → Integrations → Atlas (`docs/ATLAS.md`); mint `product.service.kryton` JWT.
+
+## Explicitly out of GA
+
+- Live migration / HA replicas (`liveMigration` remains false) — this is about the KubeVirt **guest VM**; it's separate from krytond's own replica count below.
+- Multiple `krytond` replicas (`replicaCount: 1` only) — `internal/reconciler/ttl.go` has no leader election and `internal/events/events.go`'s history/SSE fan-out is in-process, so scaling out krytond itself is unsafe until both are fixed. See [ARCHITECTURE.md](ARCHITECTURE.md).
+- Dockur snapshots.
+- The `libvirt` provider (single-host Linux) and its snapshots.
+- Microsoft media, product keys, and Windows licensing (operator-owned).
