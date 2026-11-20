@@ -104,7 +104,7 @@ function Shell({ theme, onToggleTheme, onSignOut }: { theme: Theme; onToggleThem
         <a href="https://zyvor.dev" target="_blank" rel="noopener noreferrer">
           Zyvor
         </a>{' '}
-        · Apache License 2.0
+        · Zyvor Production License v1.0
       </footer>
       {app.createFor && <CreateMachine />}
       {app.detailId && <MachineDetail />}

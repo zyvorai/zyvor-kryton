@@ -12,7 +12,8 @@ info:
     name: Zyvor
     url: https://zyvor.dev
   license:
-    name: Apache-2.0
+    name: Zyvor Production License v1.0
+    url: https://github.com/zyvorai/zyvor-kryton/blob/main/LICENSE
 servers:
   - url: /
     description: Relative to Kryton base URL

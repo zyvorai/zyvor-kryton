@@ -7,19 +7,19 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="theme-color" content="#ffffff" />
   <title>Kryton · One stable machine API for Windows and Linux</title>
-  <meta name="description" content="A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends. Free under Apache-2.0." />
+  <meta name="description" content="A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends. Non-production use is free under the Zyvor Production License v1.0; production use requires a commercial license (sales@zyvor.dev)." />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="canonical" href="https://zyvorai.github.io/zyvor-kryton/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Kryton" />
   <meta property="og:title" content="Kryton · One stable machine API for Windows and Linux" />
-  <meta property="og:description" content="A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends. Free under Apache-2.0." />
+  <meta property="og:description" content="A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends. Non-production use is free under the Zyvor Production License v1.0; production use requires a commercial license (sales@zyvor.dev)." />
   <meta property="og:url" content="https://zyvorai.github.io/zyvor-kryton/" />
   <meta name="twitter:card" content="summary" />
   <script src="theme.js"></script>
   <link rel="stylesheet" href="site.css" />
   <script type="application/ld+json">
-  {"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Kryton","description":"A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends.","codeRepository":"https://github.com/zyvorai/zyvor-kryton","programmingLanguage":"Go","license":"https://www.apache.org/licenses/LICENSE-2.0","url":"https://zyvorai.github.io/zyvor-kryton/"}
+  {"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Kryton","description":"A control plane for Windows and Linux machines: one REST and CloudEvents contract over demo, dockur, libvirt and KubeVirt backends.","codeRepository":"https://github.com/zyvorai/zyvor-kryton","programmingLanguage":"Go","license":"https://github.com/zyvorai/zyvor-kryton/blob/main/LICENSE","url":"https://zyvorai.github.io/zyvor-kryton/"}
   </script>
 </head>
 <body>
@@ -43,7 +43,7 @@
       <h1 id="hero-h">One stable machine API. <em>Real Windows and Linux behind it.</em></h1>
       <p class="lede">A control plane for Windows and Linux machines. Portals, CI and automation talk to <strong>one REST + CloudEvents contract</strong> whether the backend is an in-memory demo, real Windows through dockur on a lab host, Linux cloud images on a KVM host through libvirt, or Windows and Linux VMs on KubeVirt.</p>
       <p class="cta"><a class="btn primary" href="#quickstart">Run the demo</a><a class="btn" href="docs/">Read the docs</a><a class="link" href="https://github.com/zyvorai/zyvor-kryton">Source on GitHub</a></p>
-      <ul class="chips" aria-label="Facts"><li class="ok">Apache-2.0</li><li>Go 1.27.1+</li><li>REST + CloudEvents</li><li>OpenAPI</li><li>KubeVirt</li></ul>
+      <ul class="chips" aria-label="Facts"><li class="ok">Zyvor Production License</li><li>Go 1.27.1+</li><li>REST + CloudEvents</li><li>OpenAPI</li><li>KubeVirt</li></ul>
     </div>
     <div class="term" role="group" aria-label="Local demo commands">
       <div class="term-head"><i></i><i></i><i></i><span>make demo</span></div>
@@ -179,20 +179,20 @@ krytonctl create --image ubuntu-24.04 --cpu 2 --memory 2048 --disk 20 --ssh-key 
 
   <section id="license" aria-labelledby="license-h">
     <h2 id="license-h">License</h2>
-    <p class="sub">Kryton is free and open source under the <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/LICENSE">Apache License 2.0</a> (see <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/NOTICE">NOTICE</a>). Report vulnerabilities per <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/SECURITY.md">SECURITY.md</a>; contributions are welcome, see <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
+    <p class="sub">Kryton is source-available under the <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/LICENSE">Zyvor Production License v1.0</a>: free for non-production use, with production use under a commercial license (<a href="https://zyvor.dev/buy">zyvor.dev/buy</a>, sales@zyvor.dev) (see <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/NOTICE">NOTICE</a>). Report vulnerabilities per <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/SECURITY.md">SECURITY.md</a>; contributions are welcome, see <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
   </section>
 
   <section id="support" aria-labelledby="support-h">
     <div class="support">
       <h2 id="support-h">Support the project</h2>
-      <p class="sub">Free under Apache-2.0. If it helps you, you can donate any amount you like: <a href="https://rzp.io/rzp/utwdYh3" rel="noopener">https://rzp.io/rzp/utwdYh3</a>. A donation is voluntary and supports development and maintenance. It is not a purchase: it buys no support, SLA, features, priority or license, and it is not tax-deductible (Zyvor AI Labs Private Limited is a company, not a charity). Zyvor Enterprise (supported releases, SLAs, a named contact and enterprise features) is separate: <a href="mailto:sales@zyvor.dev">sales@zyvor.dev</a>.</p>
+      <p class="sub">Non-production use is free under the Zyvor Production License v1.0; production use requires a commercial license (sales@zyvor.dev). If it helps you, you can donate any amount you like: <a href="https://rzp.io/rzp/utwdYh3" rel="noopener">https://rzp.io/rzp/utwdYh3</a>. A donation is voluntary and supports development and maintenance. It is not a purchase: it buys no support, SLA, features, priority or license, and it is not tax-deductible (Zyvor AI Labs Private Limited is a company, not a charity). Zyvor Enterprise (supported releases, SLAs, a named contact and enterprise features) is separate: <a href="mailto:sales@zyvor.dev">sales@zyvor.dev</a>.</p>
       <p class="cta"><a class="btn primary" href="https://rzp.io/rzp/utwdYh3" rel="noopener">Donate any amount</a></p>
     </div>
   </section>
 </main>
 
 <footer>
-  <p><b>Kryton</b> · © 2026 Zyvor AI Labs Private Limited · <a href="https://zyvor.dev">zyvor.dev</a> · Apache-2.0 · <a href="#support">Support</a></p>
+  <p><b>Kryton</b> · © 2026 Zyvor AI Labs Private Limited · <a href="https://zyvor.dev">zyvor.dev</a> · Zyvor Production License · <a href="#support">Support</a></p>
   <p><a href="https://github.com/zyvorai/zyvor-kryton">GitHub</a> · <a href="docs/">Docs</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/USER-GUIDE.md">User guide</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/docs/API.md">API</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/SECURITY.md">Security</a> · <a href="https://github.com/zyvorai/zyvor-kryton/blob/main/CHANGELOG.md">Changelog</a></p>
 </footer>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

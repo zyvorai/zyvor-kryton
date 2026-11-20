@@ -8,12 +8,12 @@ hero:
   swatches:
     - {label: "REST + CloudEvents"}
     - {label: "Go 1.27.1+"}
-    - {label: "Apache-2.0"}
+    - {label: "Zyvor Production License"}
   highlights:
     - {value: "4", label: "Interchangeable providers behind one machine API — demo, dockur, libvirt, KubeVirt", footnote: "1"}
     - {value: "1", label: "krytond replica supported today — single-writer TTL reconciler and in-process event bus", footnote: "2"}
     - {value: "3", label: "RBAC roles — viewer, operator, admin — always scoped to project", footnote: "3"}
-    - {value: "Apache-2.0", label: "Open-source license — no Windows media or keys shipped"}
+    - {value: "Zyvor Production 1.0", label: "Source-available license — no Windows media or keys shipped"}
   hub_bands:
     - {icon: "❓", title: "FAQ", description: "Questions people evaluating Kryton actually ask, before they've decided to adopt it.", href: "FAQ.md"}
     - {icon: "📘", title: "User guide", description: "Pick the path that matches your role — evaluator, lab operator, production operator, or integrator.", href: "USER-GUIDE.md"}
@@ -27,7 +27,7 @@ footnotes:
   - {marker: "3", text: "Roles viewer/operator/admin are always intersected with project membership.", href: "ARCHITECTURE.md#projects", href_label: "See Architecture — Projects."}
 ---
 
-Kryton is a small, open-source (Apache-2.0) control-plane API for Windows
+Kryton is a small, source-available (Zyvor Production License v1.0) control-plane API for Windows
 and Linux machines — one stable REST+CloudEvents contract in front of
 interchangeable backends (demo, dockur, libvirt, KubeVirt). It is not a Windows installer or
 activation service, not a raw KubeVirt YAML factory, and not a full desktop
@@ -46,7 +46,7 @@ the "how to use Kryton" walkthrough — see the
 - ♻️ Day-2 ops: start / stop / snapshot / TTL expiry, SSE + webhooks
 - 🩺 `krytonctl doctor` + `/api/v1/doctor` diagnostics
 - 🖥️ Operator dashboard with collapsible rail (light/dark)
-- 📜 Apache-2.0 — no Windows media or keys shipped
+- 📜 Zyvor Production License v1.0 — no Windows media or keys shipped
 
 </div>
 

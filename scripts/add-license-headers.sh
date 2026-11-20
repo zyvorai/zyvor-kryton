@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
 # SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
-# Add Apache-2.0 headers to Kryton first-party source files (idempotent).
+# Add Zyvor Production License headers to Kryton first-party source files (idempotent).
 # --check: report files missing a header without modifying anything; exits
 # non-zero if any are found. Used by CI to enforce headers on new files.
 set -euo pipefail
@@ -128,7 +128,7 @@ fi
 
 if [ "${CHECK}" -eq 1 ]; then
   if [ "${#MISSING[@]}" -gt 0 ]; then
-    echo "✗ Missing Apache-2.0 header (${#MISSING[@]}):"
+    echo "✗ Missing Zyvor Production License header (${#MISSING[@]}):"
     printf '  %s\n' "${MISSING[@]}"
     echo "Run ./scripts/add-license-headers.sh to fix."
     exit 1

@@ -44,4 +44,4 @@ Start here, then drill into the guide that matches your role.
 | `scripts/bootstrap-kubevirt-images.sh` | CDI DataSource bootstrap |
 | `scripts/setup-kubevirt.sh` | Bootstrap + API + smoke VM |
 | `scripts/setup-kubevirt-production.sh` | Full production chain |
-| `scripts/add-license-headers.sh` | Apply Apache headers (maintainers) |
+| `scripts/add-license-headers.sh` | Apply Zyvor Production License headers (maintainers) |

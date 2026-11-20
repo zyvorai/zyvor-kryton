@@ -154,4 +154,4 @@ Initial public release of Kryton as a production-oriented standalone control pla
 - **Install progress** — `consoleUrl`, `progressPercent`, `message` on machines.
 - **Remote deploy** — `scripts/deploy-remote.sh` and `make deploy-remote`.
 
-The release source is Apache-2.0 licensed and contains no Windows media or activation material.
+The release source is under the Zyvor Production License v1.0 and contains no Windows media or activation material.
