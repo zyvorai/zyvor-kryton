@@ -23,8 +23,6 @@
 
 </div>
 
-[Client overview (PDF)](docs/Kryton-Client-Overview.pdf)
-
 ---
 
 ## What's new
@@ -58,35 +56,6 @@ From [CHANGELOG.md](CHANGELOG.md) (1.1.0 to 1.4.4):
 | "Is this host ready?" is a half-day of guessing | **`krytonctl doctor`**: auth, catalog, namespaces, DataSources, snapshot CRDs, StorageClass ↔ snapshot class |
 
 ![Capabilities at a glance: API, Providers, Operate, Secure](docs/ux/readme-capabilities.jpg)
-
----
-
-## Kryton vs plain KubeVirt
-
-![Kryton vs plain KubeVirt: keep KubeVirt, add the API your apps need](docs/ux/readme-vs.jpg)
-
-Kryton runs **on top of** KubeVirt in production; the question is whether you build the application layer yourself.
-
-| | **Kryton** | **Plain KubeVirt** |
-|---|---|---|
-| Interface for apps | REST + CloudEvents, OpenAPI | Kubernetes API (`VirtualMachine` CRDs), `kubectl` / `virtctl` |
-| Machine identity | Kryton UUID, recorded in labels | `namespace/name` |
-| Lab path | `demo` in memory, `dockur` (Windows) on a Docker/Podman + KVM host, `libvirt` (Linux) on a KVM host | A Kubernetes cluster with KubeVirt installed |
-| Production path | The `kubevirt` provider behind Helm, hashed API keys, TLS | KubeVirt itself |
-| Golden images | Catalog IDs mapped to CDI `DataSource` objects, `POST /api/v1/golden/{id}/bootstrap` | CDI `DataVolume` / `DataSource` objects you manage |
-| Snapshots | Create, list, restore, delete via API, UI and `krytonctl` | `VirtualMachineSnapshot` / `VirtualMachineRestore` resources |
-| Live events | `GET /api/v1/events/stream` (SSE) | Kubernetes watches |
-| Console | Embedded noVNC in the browser UI | `virtctl vnc` / external UI |
-| **Choose plain KubeVirt when** | | Your callers already speak the Kubernetes API and don't need a stable, backend-independent machine API |
-
-### Is this for you?
-
-| | **Kryton** | VMware/Citrix VDI | Windows Admin Center | Plain KubeVirt |
-|---|---|---|---|---|
-| Scope | Stable machine API over interchangeable backends | Full VDI stack | GUI management | Kubernetes VM CRDs |
-| API-first | REST + CloudEvents | Proprietary | GUI-first | Kubernetes API |
-| Windows media | Not shipped — operator's job | Vendor-licensed | N/A | Not shipped |
-| Lab → prod | Same API: `demo` → `dockur` / `libvirt` → `kubevirt` | Separate tooling | N/A | Build your own app layer |
 
 ---
 

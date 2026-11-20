@@ -32,13 +32,13 @@ YAML_HEADER='# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
 # SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 '
 
-has_apache() {
+has_zyvor_header() {
   grep -q 'Apache License, Version 2.0\|SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0' "$1" 2>/dev/null
 }
 
 prepend_go() {
   local f="$1"
-  has_apache "$f" && return 0
+  has_zyvor_header "$f" && return 0
   if [ "${CHECK}" -eq 1 ]; then
     MISSING+=("$f")
     return 0
@@ -53,7 +53,7 @@ prepend_go() {
 
 prepend_text() {
   local f="$1" header="$2"
-  has_apache "$f" && return 0
+  has_zyvor_header "$f" && return 0
   if [ "${CHECK}" -eq 1 ]; then
     MISSING+=("$f")
     return 0
@@ -68,7 +68,7 @@ prepend_text() {
 
 prepend_shell() {
   local f="$1"
-  has_apache "$f" && return 0
+  has_zyvor_header "$f" && return 0
   if [ "${CHECK}" -eq 1 ]; then
     MISSING+=("$f")
     return 0
@@ -111,7 +111,7 @@ for f in openapi.yaml cmd/krytond/openapi.yaml internal/api/openapi.yaml; do
 done
 
 echo "→ Makefile"
-if [ -f Makefile ] && ! has_apache Makefile; then
+if [ -f Makefile ] && ! has_zyvor_header Makefile; then
   if [ "${CHECK}" -eq 1 ]; then
     MISSING+=("Makefile")
   else
