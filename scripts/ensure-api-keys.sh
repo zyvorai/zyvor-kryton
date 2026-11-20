@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 # Create ~/.kryton/keys.json (SHA-256 digests) and lab.token (raw bearer) if missing.
 set -euo pipefail
 

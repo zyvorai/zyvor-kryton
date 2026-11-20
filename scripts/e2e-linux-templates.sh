@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 # Real guest boot gate. Requires acquired libvirt images or ready CDI DataSources.
 set -euo pipefail
 : "${KRYTON_TOKEN:?Set KRYTON_TOKEN for the test project}"

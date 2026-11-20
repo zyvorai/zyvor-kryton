@@ -1,5 +1,5 @@
 // Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 
 // Package atlas is the client for the Zyvor Atlas storage control plane:
 // it carries the integration Config (base URL, bearer token, product ID)

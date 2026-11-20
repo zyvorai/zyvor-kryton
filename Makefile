@@ -1,5 +1,5 @@
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 .PHONY: run build test race vet fmt check web web-check vulncheck lint demo image deploy-remote harden-lab bootstrap-kubevirt setup-kubevirt setup-kubevirt-production run-kubevirt-production-remote build-golden enable-kubevirt-snapshots enable-rook-ceph
 
 run:

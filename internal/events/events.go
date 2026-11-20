@@ -1,5 +1,5 @@
 // Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 
 // Package events implements Kryton's CloudEvents-formatted audit trail:
 // a Bus that records machine lifecycle events in memory (optionally

@@ -1,5 +1,5 @@
 // Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 
 // Package libvirt implements local libvirt machine lifecycle through virsh.
 // It never invokes a shell; disks and seed media live in a managed directory.

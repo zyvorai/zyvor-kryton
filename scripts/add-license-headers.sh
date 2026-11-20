@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 # Add Apache-2.0 headers to Kryton first-party source files (idempotent).
 # --check: report files missing a header without modifying anything; exits
 # non-zero if any are found. Used by CI to enforce headers on new files.
@@ -16,24 +16,24 @@ cd "${ROOT}"
 MISSING=()
 
 GO_HEADER='// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 '
 
 JS_HEADER='// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 '
 
 CSS_HEADER='/* Copyright 2026 Zyvor AI Labs · https://zyvor.dev
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
  */
 '
 
 YAML_HEADER='# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
 '
 
 has_apache() {
-  grep -q 'Apache License, Version 2.0\|SPDX-License-Identifier: Apache-2.0' "$1" 2>/dev/null
+  grep -q 'Apache License, Version 2.0\|SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0' "$1" 2>/dev/null
 }
 
 prepend_go() {
@@ -79,7 +79,7 @@ prepend_shell() {
   {
     echo "${first}"
     echo "# Copyright 2026 Zyvor AI Labs · https://zyvor.dev"
-    echo "# SPDX-License-Identifier: Apache-2.0"
+    echo "# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0"
     tail -n +2 "$f"
   } >"${tmp}"
   mv "${tmp}" "$f"
@@ -118,7 +118,7 @@ if [ -f Makefile ] && ! has_apache Makefile; then
     tmp="$(mktemp)"
     {
       echo "# Copyright 2026 Zyvor AI Labs · https://zyvor.dev"
-      echo "# SPDX-License-Identifier: Apache-2.0"
+      echo "# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0"
       cat Makefile
     } >"${tmp}"
     mv "${tmp}" Makefile
