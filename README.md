@@ -180,7 +180,7 @@ Configuration highlights: `KRYTON_PROVIDER`, `KRYTON_AUTH_MODE`, `KRYTON_ADDR`, 
 make check && make test && make race && make vet
 ```
 
-CI runs license headers, golangci-lint, govulncheck, gosec, tests, multi-arch `ghcr.io/zyvorai/kryton` publish. **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+CI runs license headers, golangci-lint, govulncheck, gosec, tests, multi-arch container image build. **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## What Kryton is not
 

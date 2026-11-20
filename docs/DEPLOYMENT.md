@@ -82,7 +82,7 @@ kubectl -n kryton create secret generic kryton-auth --from-file=keys.json
 helm upgrade --install kryton ./deploy/helm/kryton -n kryton --create-namespace
 ```
 
-Image: `ghcr.io/zyvorai/kryton` (see `deploy/helm/kryton/values.yaml`).
+Image: `ghcr.io/zyvorai/kryton` is a private registry package; request access at sales@zyvor.dev or build your own with `make build` (see `deploy/helm/kryton/values.yaml`).
 
 Storage profiles:
 
