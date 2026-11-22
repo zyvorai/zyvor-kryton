@@ -3,7 +3,7 @@
 # Kryton
 
 [![CI](https://github.com/zyvorai/zyvor-kryton/actions/workflows/ci.yml/badge.svg)](https://github.com/zyvorai/zyvor-kryton/actions/workflows/ci.yml)
-[![License: Zyvor Production](https://img.shields.io/badge/license-Zyvor%20Production%201.0-blue.svg)](LICENSE)
+[![License: Zyvor Production](https://img.shields.io/badge/license-Zyvor%20Production%20Licence%20v2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27.1+-0071e3?style=flat-square&labelColor=1d1d1f&logo=go&logoColor=white)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/zyvorai/kryton.svg)](https://pkg.go.dev/github.com/zyvorai/kryton)
 
@@ -231,16 +231,16 @@ Share cards: `./docs/social/build-hero-dark.sh` and `./docs/social/build-social-
 
 ## Support
 
-Evaluation is free for 30 days per organization under the Zyvor Production License v1.0; production use requires a commercial license (sales@zyvor.dev). If it helps you, you can donate any amount you like: <https://rzp.io/rzp/utwdYh3>. A donation is voluntary and supports development and maintenance. It is not a purchase: it buys no support, SLA, features, priority or license, and it is not tax-deductible (Zyvor AI Labs Private Limited is a company, not a charity). Zyvor Enterprise (supported releases, SLAs, a named contact and enterprise features) is separate: [sales@zyvor.dev](mailto:sales@zyvor.dev).
+A 30-day trial is available on request from sales@zyvor.dev (a paid evaluation Order at no charge); production and any other use needs a paid Order under the Zyvor Production Licence v2.0. If it helps you, you can donate any amount you like: <https://rzp.io/rzp/utwdYh3>. A donation is voluntary and supports development and maintenance. It is not a purchase: it buys no support, SLA, features, priority or license, and it is not tax-deductible (Zyvor AI Labs Private Limited is a company, not a charity). Zyvor Enterprise (supported releases, SLAs, a named contact and enterprise features) is separate: [sales@zyvor.dev](mailto:sales@zyvor.dev).
 
 ---
 
 ## License
 
-Kryton is source-available under the **[Zyvor Production License v1.0](LICENSE)** (SPDX `LicenseRef-Zyvor-Production-1.0`, also in [LICENSES/](LICENSES/LicenseRef-Zyvor-Production-1.0.txt); see [NOTICE](NOTICE)).
+Kryton is source-available under the **[Zyvor Production Licence v2.0](LICENSE)** (SPDX `LicenseRef-Zyvor-Production-2.0`, also in [LICENSES/](LICENSES/LicenseRef-Zyvor-Production-2.0.txt); see [NOTICE](NOTICE)).
 
-- **Free for 30 days** per organization, for evaluation, development, testing, proofs of concept, research and education. After that a commercial license is required.
-- **Production use needs a commercial license** from Zyvor AI Labs. A 30-day trial key is available for production evaluation. Buy / get a quote: [zyvor.dev/buy](https://zyvor.dev/buy) · [sales@zyvor.dev](mailto:sales@zyvor.dev).
+- **Trial:** a 30-day trial is available on request from [sales@zyvor.dev](mailto:sales@zyvor.dev) (a paid evaluation Order at no charge).
+- **Production and any other use needs a paid Order** under the Zyvor Production Licence v2.0. Buy / get a quote: [zyvor.dev/buy](https://zyvor.dev/buy) · [sales@zyvor.dev](mailto:sales@zyvor.dev).
 - **Price:** INR 29,699 per node per year incl. 18% GST in India; US$300 per node per year excl. tax elsewhere. Buy: [zyvor.dev/buy](https://zyvor.dev/buy). Orders of USD 5,000 or more and quotes are invoiced in USD through Skydo.
 
 **Zyvor Enterprise** adds what production teams ask for: supported releases, deployment and upgrade guidance, priority incident triage, a named technical contact and 24x7 critical intake. Plans and terms: [docs/SUBSCRIPTION-MODEL.md](docs/SUBSCRIPTION-MODEL.md) · [Pricing](https://zyvor.dev/pricing?utm_source=github&utm_medium=kryton&utm_campaign=readme_license) · [sales@zyvor.dev](mailto:sales@zyvor.dev). Support is on the one Zyvor Support meter per worker node per year: Supported INR 59,999 in India / USD 600 elsewhere, Supported Plus INR 119,999 in India / USD 1,200 elsewhere. Prices: INR incl. 18% GST in India; US dollars excl. tax elsewhere. Buy / get a quote: [zyvor.dev/buy](https://zyvor.dev/buy).

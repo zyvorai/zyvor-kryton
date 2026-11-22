@@ -10,9 +10,7 @@ better starting point.
 
 ## Licensing & cost
 
-**Is it really free?** For non-production use, yes: the Zyvor Production
-License v1.0 makes evaluation, development, testing, research and education
-free. Production use needs a commercial license (sales@zyvor.dev) (see [`NOTICE`](https://github.com/zyvorai/kryton/blob/main/NOTICE)). No Windows media or license
+**Is it really free?** No. A 30-day trial is available on request from sales@zyvor.dev (a paid evaluation Order at no charge); production and any other use needs a paid Order under the Zyvor Production Licence v2.0. (see [`NOTICE`](https://github.com/zyvorai/kryton/blob/main/NOTICE)). No Windows media or license
 keys are shipped — that stays the operator's responsibility. See the
 README's [License](https://github.com/zyvorai/kryton#license) section.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
-# Add Zyvor Production License headers to Kryton first-party source files (idempotent).
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
+# Add Zyvor Production Licence headers to Kryton first-party source files (idempotent).
 # --check: report files missing a header without modifying anything; exits
 # non-zero if any are found. Used by CI to enforce headers on new files.
 set -euo pipefail
@@ -16,24 +16,24 @@ cd "${ROOT}"
 MISSING=()
 
 GO_HEADER='// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 '
 
 JS_HEADER='// Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 '
 
 CSS_HEADER='/* Copyright 2026 Zyvor AI Labs · https://zyvor.dev
- * SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+ * SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
  */
 '
 
 YAML_HEADER='# Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+# SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 '
 
 has_zyvor_header() {
-  grep -q 'Apache License, Version 2.0\|SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0' "$1" 2>/dev/null
+  grep -q 'Apache License, Version 2.0\|SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0' "$1" 2>/dev/null
 }
 
 prepend_go() {
@@ -79,7 +79,7 @@ prepend_shell() {
   {
     echo "${first}"
     echo "# Copyright 2026 Zyvor AI Labs · https://zyvor.dev"
-    echo "# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0"
+    echo "# SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0"
     tail -n +2 "$f"
   } >"${tmp}"
   mv "${tmp}" "$f"
@@ -118,7 +118,7 @@ if [ -f Makefile ] && ! has_zyvor_header Makefile; then
     tmp="$(mktemp)"
     {
       echo "# Copyright 2026 Zyvor AI Labs · https://zyvor.dev"
-      echo "# SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0"
+      echo "# SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0"
       cat Makefile
     } >"${tmp}"
     mv "${tmp}" Makefile
@@ -128,7 +128,7 @@ fi
 
 if [ "${CHECK}" -eq 1 ]; then
   if [ "${#MISSING[@]}" -gt 0 ]; then
-    echo "✗ Missing Zyvor Production License header (${#MISSING[@]}):"
+    echo "✗ Missing Zyvor Production Licence header (${#MISSING[@]}):"
     printf '  %s\n' "${MISSING[@]}"
     echo "Run ./scripts/add-license-headers.sh to fix."
     exit 1

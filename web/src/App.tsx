@@ -1,5 +1,5 @@
 // Copyright 2026 Zyvor AI Labs · https://zyvor.dev
-// SPDX-License-Identifier: LicenseRef-Zyvor-Production-1.0
+// SPDX-License-Identifier: LicenseRef-Zyvor-Production-2.0
 
 import { useCallback, useEffect, useState } from 'react';
 import { AUTH_REQUIRED, clearToken, ensureAuth, openAccess, setUnauthorizedHandler, token } from './api';
@@ -104,7 +104,7 @@ function Shell({ theme, onToggleTheme, onSignOut }: { theme: Theme; onToggleThem
         <a href="https://zyvor.dev" target="_blank" rel="noopener noreferrer">
           Zyvor
         </a>{' '}
-        · Zyvor Production License v1.0
+        · Zyvor Production Licence v2.0
       </footer>
       {app.createFor && <CreateMachine />}
       {app.detailId && <MachineDetail />}
