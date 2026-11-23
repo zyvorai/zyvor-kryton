@@ -6,6 +6,20 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+### Added
+
+- Label selectors: `GET /api/v1/machines?selector=env=ci,tier!=db` (Kubernetes-style `=`, `==`, `!=`, `in`, `notin`, key, `!key`; capped at 1024 bytes, 16 requirements, 16 values). `krytonctl list --selector`, `krytonctl create --label k=v`, and the web console search now matches `key=value` labels. `labels` is now documented in the OpenAPI create schema.
+- `Idempotency-Key` on `POST /api/v1/machines`: a retried create returns the original `201` with `Idempotent-Replay: true` instead of a duplicate or a `409`; reuse with a different body is `422 IDEMPOTENCY_KEY_REUSED`, an in-flight retry `409 IDEMPOTENCY_IN_PROGRESS`. Keys are per caller and project, kept 24 h in memory (lost on restart), at most 10,000; a replay never repeats the one-time generated password. `krytonctl create --idempotency-key`.
+- Bulk lifecycle: `POST /api/v1/machines/actions` starts or stops up to 100 machines by `ids` or `selector` with per-machine results; `krytonctl bulk`.
+- Event filters on `GET /api/v1/events`: `type` (exact or trailing `*`), `machineId`, `since`; `krytonctl events --type --machine --since`.
+- `docs/RESEARCH.md`: survey of machine-management APIs with ranked ideas and sources.
+
+### Fixed
+
+- `spec.labels` had no size cap: a create request could carry thousands of labels. At most 64 are accepted now (`400 INVALID_REQUEST`).
+- OpenAPI: the create schema omitted `labels`.
+- Golden-build and storage-setup status files were rewritten in place, so a poller could read a truncated file and fail with `unexpected end of JSON input` (flaky `internal/golden` and `internal/storage` tests, and a transient error in the status endpoints). They are now written to a temp file and renamed.
+
 ### Changed
 
 - Operator console deps (`web/`): vitest 5.0.3 -> 5.1.1 and @vitejs/plugin-react 6.1.1 -> 6.3.0; embedded bundle in `cmd/krytond/web` rebuilt (typecheck, 38 tests, build pass).

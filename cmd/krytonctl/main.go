@@ -28,6 +28,7 @@ import (
 
 type client struct {
 	base, token, project string
+	idemKey              string // sent as Idempotency-Key when set
 	http                 *http.Client
 }
 
@@ -59,11 +60,13 @@ func main() {
 	c := client{base: strings.TrimRight(env("KRYTON_URL", "http://localhost:8080"), "/"), token: os.Getenv("KRYTON_TOKEN"), project: env("KRYTON_PROJECT", "default"), http: &http.Client{Timeout: 30 * time.Second}}
 	switch os.Args[1] {
 	case "list":
-		c.do("GET", "/api/v1/machines?project="+c.project, nil)
+		listCommand(c, os.Args[2:])
+	case "bulk":
+		bulkCommand(c, os.Args[2:])
 	case "images":
 		c.do("GET", "/api/v1/images", nil)
 	case "events":
-		c.do("GET", "/api/v1/events?limit=50", nil)
+		eventsCommand(c, os.Args[2:])
 	case "capabilities":
 		c.do("GET", "/api/v1/capabilities", nil)
 	case "doctor":
@@ -116,6 +119,9 @@ func createCommand(c client, args []string) {
 	network := f.String("network", "", "Multus network attachment definition")
 	ttl := f.Int("ttl", 0, "TTL in minutes")
 	project := f.String("project", c.project, "project")
+	var labelFlags stringList
+	f.Var(&labelFlags, "label", "machine label key=value (repeatable, at most 64)")
+	f.StringVar(&c.idemKey, "idempotency-key", "", "make a retried create safe (1-128 chars A-Za-z0-9_.:-)")
 	dUsername := f.String("dockur-username", "", "dockur guest username")
 	dPassword := f.String("dockur-password", "", "dockur guest password")
 	dHostname := f.String("dockur-hostname", "", "dockur HOST (defaults to machine name)")
@@ -151,6 +157,14 @@ func createCommand(c client, args []string) {
 		"disk":       map[string]any{"sizeGiB": *disk},
 		"network":    map[string]any{"networkId": *network},
 		"ttlMinutes": *ttl,
+	}
+	labels, err := parseLabelFlags(labelFlags)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if labels != nil {
+		body["labels"] = labels
 	}
 	if *sshKey != "" || *username != "" {
 		init := model.Initialization{Username: *username}
@@ -285,6 +299,9 @@ func (c client) do(method, path string, body any) {
 		fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.idemKey != "" {
+		req.Header.Set("Idempotency-Key", c.idemKey)
+	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
@@ -314,8 +331,8 @@ func env(k, d string) string {
 func fatal(err error) { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
 func usage() {
 	fmt.Println(`krytonctl commands:
-  list
-  create NAME [--image ID --cpu N --memory MiB --disk GiB --network NAD --ttl MIN]
+  list [--selector 'env=ci,tier!=db']
+  create NAME [--image ID --cpu N --memory MiB --disk GiB --network NAD --ttl MIN --label k=v ... --idempotency-key KEY]
     dockur flags (provider=dockur):
       --dockur-username --dockur-password --dockur-hostname
       --dockur-language --dockur-region --dockur-keyboard
@@ -341,6 +358,8 @@ func usage() {
   get MACHINE_ID
   start MACHINE_ID
   stop MACHINE_ID
+  bulk start|stop (--selector EXPR | MACHINE_ID...)   up to 100 machines, per-machine results
+  events [--type T[,T]] [--machine ID] [--since RFC3339] [--limit N]
   snapshot MACHINE_ID [--name NAME]
   snapshots MACHINE_ID
   restore MACHINE_ID SNAPSHOT_ID

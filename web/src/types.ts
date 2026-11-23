@@ -39,6 +39,7 @@ export type MachineSpec = {
   disk: { sizeGiB: number; storageClass?: string };
   network?: { networkId?: string };
   ttlMinutes?: number;
+  labels?: Record<string, string>;
   dockur?: DockurOptions;
 };
 

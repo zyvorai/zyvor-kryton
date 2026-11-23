@@ -298,6 +298,9 @@ func ValidateMachineSpec(s MachineSpec) error {
 	if s.TTLMinutes < 0 || s.TTLMinutes > 60*24*30 {
 		problems = append(problems, "ttlMinutes must be between 0 and 43200")
 	}
+	if len(s.Labels) > MaxLabels {
+		problems = append(problems, fmt.Sprintf("at most %d labels are allowed", MaxLabels))
+	}
 	for k, v := range s.Labels {
 		if !labelKey.MatchString(k) || !labelValue.MatchString(v) {
 			problems = append(problems, fmt.Sprintf("invalid label %q", k))

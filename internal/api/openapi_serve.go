@@ -89,6 +89,7 @@ func allAPIEndpoints() []apiEndpoint {
 		{Method: "GET", Path: "/api/v1/summary", Group: "machines", Description: "Project summary"},
 		{Method: "GET", Path: "/api/v1/machines", Group: "machines", Description: "List machines"},
 		{Method: "POST", Path: "/api/v1/machines", Group: "machines", Description: "Create machine"},
+		{Method: "POST", Path: "/api/v1/machines/actions", Group: "machines", Description: "Bulk start or stop machines by id or label selector"},
 		{Method: "GET", Path: "/api/v1/machines/{id}", Group: "machines", Description: "Get machine"},
 		{Method: "DELETE", Path: "/api/v1/machines/{id}", Group: "machines", Description: "Delete machine"},
 		{Method: "POST", Path: "/api/v1/machines/{id}/start", Group: "machines", Description: "Start machine"},

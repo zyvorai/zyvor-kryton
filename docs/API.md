@@ -38,8 +38,9 @@ POST   /api/v1/golden/{id}/bootstrap
 GET    /api/v1/jobs
 GET    /api/v1/jobs/{id}
 GET    /api/v1/summary?project=<project>
-GET    /api/v1/machines?project=<project>&limit=<n>&cursor=<opaque>
-POST   /api/v1/machines
+GET    /api/v1/machines?project=<project>&limit=<n>&cursor=<opaque>&selector=<expr>
+POST   /api/v1/machines                  # optional Idempotency-Key header
+POST   /api/v1/machines/actions          # bulk start/stop by ids or selector
 GET    /api/v1/machines/{id}?project=<project>
 GET    /api/v1/machines/{id}/console?project=<project>
 POST   /api/v1/machines/{id}/console-ticket?project=<project>
@@ -52,7 +53,7 @@ POST   /api/v1/machines/{id}/snapshots/{sid}/restore?project=<project>
 DELETE /api/v1/machines/{id}/snapshots/{sid}?project=<project>
 DELETE /api/v1/machines/{id}?project=<project>
 PUT    /api/v1/machines/{id}/ttl?project=<project>   # extend / clear TTL
-GET    /api/v1/events
+GET    /api/v1/events?type=&machineId=&since=&limit=
 GET    /api/v1/events/stream
 GET    /api/v1/audit                     # admin; filters + cursor pagination
 GET    /api/v1/webhooks?project=<project>
@@ -79,6 +80,36 @@ DELETE /api/v1/quotas/{project}
 Public (no auth): `GET /api/v1` · `GET /openapi.yaml` · `GET /healthz` · `GET /readyz`. `GET /metrics` is open only with auth disabled or `KRYTON_METRICS_PUBLIC=true`; otherwise it needs the metrics token or an API key. The audit, webhook, schedule, TTL and quota endpoints are documented in [OBSERVABILITY.md](OBSERVABILITY.md).
 
 OpenAPI 3.1: [`openapi.yaml`](https://github.com/zyvorai/kryton/blob/main/openapi.yaml) — also served live at `/openapi.yaml`.
+
+---
+
+## Fleet operations
+
+**Label selectors.** Machines carry `spec.labels` (set at create, at most 64 labels; keys `A-Za-z0-9_.:/-` up to 128 characters, values up to 256). `GET /api/v1/machines?selector=...` filters on them before pagination. The grammar is a subset of the Kubernetes label selector, comma-separated and ANDed: `env=ci`, `env!=prod`, `env in (ci,qa)`, `env notin (prod)`, `owner` (key exists), `!owner` (key absent). `!=` and `notin` also match machines that lack the key. A selector is at most 1024 bytes, 16 requirements and 16 values per set; anything else is `400 INVALID_REQUEST`.
+
+```bash
+krytonctl create --label env=ci --label team=core ci-01
+krytonctl list --selector 'env=ci,!pinned'
+```
+
+**Idempotent create.** Send `Idempotency-Key: <1-128 chars of A-Za-z0-9_.:->` on `POST /machines` (the quoted Structured Field form is accepted too). The first successful result is remembered for 24 hours per caller, project and key. A retry with the same body returns the original `201` with `Idempotent-Replay: true` and creates nothing; a retry with a different body is `422 IDEMPOTENCY_KEY_REUSED`; a retry while the first request is still running is `409 IDEMPOTENCY_IN_PROGRESS`. Failed creates are not remembered, so they can be retried with the same key. Limits worth knowing: keys live in memory (a `krytond` restart forgets them), the store holds at most 10,000 keys (`503 IDEMPOTENCY_STORE_FULL` beyond that), and a replay never repeats the one-time `generatedPassword`. Follows the IETF `Idempotency-Key` draft.
+
+```bash
+krytonctl create --idempotency-key order-8841 --label env=ci ci-01
+```
+
+**Bulk start/stop.** `POST /api/v1/machines/actions` takes `{"project","action":"start|stop","ids":[...]}` or `{"action","selector":"env=ci"}` (exactly one of `ids` and `selector`, at most 100 machines; a selector that matches more is rejected). Operator role is required. The response is `200` with `total`, `succeeded`, `failed` and a per-machine `results` list (`ok`, `state`, or an `error` with `code`), so one missing machine does not hide the rest. Each success emits the normal started/stopped CloudEvent. Bulk delete is intentionally not offered.
+
+```bash
+krytonctl bulk stop --selector 'env=ci'
+krytonctl bulk start 3f2c... 9a41...
+```
+
+**Event filters.** `GET /api/v1/events` accepts `type` (comma-separated, at most 8, a trailing `*` matches a prefix such as `io.kryton.machine.*`), `machineId` and `since` (RFC 3339), applied before `limit`. The window searched is the in-memory ring of the last 500 events.
+
+```bash
+krytonctl events --type 'io.kryton.machine.*' --machine 3f2c...
+```
 
 ---
 
