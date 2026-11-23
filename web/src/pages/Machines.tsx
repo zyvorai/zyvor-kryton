@@ -41,7 +41,7 @@ export default function Machines() {
             className="input-field"
             name="search"
             type="search"
-            placeholder="Search name, image, ID or IP"
+            placeholder="Search name, image, ID, IP or label (env=ci)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search machines"

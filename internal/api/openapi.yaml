@@ -238,10 +238,32 @@ paths:
           name: cursor
           description: Opaque page cursor from a previous response's nextCursor.
           schema: {type: string}
+        - in: query
+          name: selector
+          description: |
+            Label selector (AND of comma-separated requirements): `k=v`, `k==v`, `k!=v`,
+            `k in (a,b)`, `k notin (a,b)`, `k` (key exists), `!k` (key absent). At most
+            1024 bytes, 16 requirements and 16 values per set. `!=` and `notin` also match
+            machines without the key. Pagination applies to the filtered set.
+          schema: {type: string, maxLength: 1024}
       responses:
         '200': {description: Machines}
+        '400': {description: Invalid selector}
     post:
       tags: [machines]
+      description: |
+        Send an `Idempotency-Key` header to make retries safe. The first result is
+        remembered for 24 hours (in memory; a restart forgets it) per caller, project and
+        key; a retry with the same body returns the original `201` with
+        `Idempotent-Replay: true` and without any one-time `generatedPassword`. The same
+        key with a different body returns `422 IDEMPOTENCY_KEY_REUSED`; a retry while the
+        first request is still running returns `409 IDEMPOTENCY_IN_PROGRESS`. Failed
+        creates are not remembered.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          description: 1-128 characters from `A-Za-z0-9_.:-` (optionally double-quoted).
+          schema: {type: string, maxLength: 130}
       requestBody:
         required: true
         content:
@@ -250,12 +272,69 @@ paths:
               $ref: '#/components/schemas/CreateMachine'
       responses:
         '201': {description: Machine created}
-        '400': {description: Invalid request}
+        '400': {description: Invalid request or Idempotency-Key}
+        '422': {description: 'IDEMPOTENCY_KEY_REUSED: key already used with a different body'}
+        '503': {description: 'IDEMPOTENCY_STORE_FULL: too many keys in use'}
         '403':
           description: 'Forbidden, or code QUOTA_EXCEEDED when this single machine is larger than a project quota limit'
         '409':
-          description: 'Name conflict, or code QUOTA_EXCEEDED when the project would exceed its quota (delete something or raise the quota)'
+          description: 'Name conflict, IDEMPOTENCY_IN_PROGRESS, or code QUOTA_EXCEEDED when the project would exceed its quota (delete something or raise the quota)'
         '429': {description: Rate limited}
+  /api/v1/machines/actions:
+    post:
+      tags: [machines]
+      summary: Start or stop many machines by id or label selector (operator)
+      description: |
+        Runs `start` or `stop` on up to 100 machines named by `ids` or matched by
+        `selector` (exactly one of the two). Each machine gets its own result and one
+        failure does not stop the others; the response is `200` whenever the request was
+        valid, so check `failed`. A selector matching more than 100 machines is rejected.
+        Each success emits the usual `io.kryton.machine.started` / `stopped` CloudEvent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              additionalProperties: false
+              properties:
+                project: {type: string}
+                action: {type: string, enum: [start, stop]}
+                ids:
+                  type: array
+                  maxItems: 100
+                  items: {type: string, pattern: '^[A-Za-z0-9-]{1,64}$'}
+                selector: {type: string, maxLength: 1024}
+      responses:
+        '200':
+          description: Per-machine results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: {type: string}
+                  action: {type: string}
+                  total: {type: integer}
+                  succeeded: {type: integer}
+                  failed: {type: integer}
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        name: {type: string}
+                        ok: {type: boolean}
+                        state: {type: string}
+                        error:
+                          type: object
+                          properties:
+                            code: {type: string}
+                            message: {type: string}
+        '400': {description: Invalid action, ids, selector or project}
+        '403': {description: Requires operator on the project}
   /api/v1/machines/{id}:
     parameters:
       - $ref: '#/components/parameters/MachineID'
@@ -922,8 +1001,21 @@ paths:
         - in: query
           name: limit
           schema: {type: integer, default: 100}
+        - in: query
+          name: type
+          description: Comma-separated CloudEvent types (at most 8); a trailing `*` matches a prefix, e.g. `io.kryton.machine.*`.
+          schema: {type: string}
+        - in: query
+          name: machineId
+          description: Only events about this machine (data.machineId or subject `machines/{id}`).
+          schema: {type: string}
+        - in: query
+          name: since
+          description: Only events at or after this RFC 3339 time.
+          schema: {type: string, format: date-time}
       responses:
         '200': {description: CloudEvent history}
+        '400': {description: Invalid filter}
   /api/v1/events/stream:
     get:
       tags: [events]
@@ -1138,6 +1230,11 @@ components:
           properties:
             networkId: {type: string}
         ttlMinutes: {type: integer, minimum: 0, maximum: 43200}
+        labels:
+          type: object
+          maxProperties: 64
+          description: Free-form labels, queryable with the `selector` list parameter. Keys match `^[A-Za-z0-9_.:/-]{1,128}$`, values `^[A-Za-z0-9_.:/ -]{0,256}$`.
+          additionalProperties: {type: string, maxLength: 256}
         initialization:
           $ref: "#/components/schemas/LinuxInitialization"
         dockur:

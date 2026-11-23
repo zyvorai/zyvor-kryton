@@ -142,6 +142,7 @@ type Server struct {
 	metricsPublic      bool
 	defaultTTL         int
 	createMu           sync.Mutex
+	idem               *idemStore
 	scrape             scrapeCache
 }
 
@@ -188,6 +189,7 @@ func New(cfg Config) *Server {
 		rateLimiter:    newRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst),
 		consoleTickets: newConsoleTickets(),
 		maxUpload:      cfg.MaxUploadBytes,
+		idem:           newIdemStore(),
 	}
 	if s.metrics != nil && s.p != nil {
 		s.metrics.AddCollector(s.collectMetrics)
@@ -226,6 +228,7 @@ func (s *Server) Handler() http.Handler {
 	apiMux.HandleFunc("GET /api/v1/summary", s.summary)
 	apiMux.HandleFunc("GET /api/v1/machines", s.listMachines)
 	apiMux.HandleFunc("POST /api/v1/machines", s.createMachine)
+	apiMux.HandleFunc("POST /api/v1/machines/actions", s.bulkMachineAction)
 	apiMux.HandleFunc("GET /api/v1/machines/{id}", s.getMachine)
 	apiMux.HandleFunc("GET /api/v1/machines/{id}/console", s.machineConsole)
 	apiMux.HandleFunc("/api/v1/machines/{id}/console/{path...}", s.machineConsole)
@@ -355,11 +358,17 @@ func (s *Server) listMachines(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	sel, err := parseSelectorParam(r.URL.Query().Get("selector"))
+	if err != nil {
+		s.badRequest(w, r, err.Error())
+		return
+	}
 	ms, err := s.p.List(r.Context(), project)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
+	ms = filterBySelector(ms, sel)
 	limit := 50
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 500 {
 		limit = v
@@ -445,6 +454,11 @@ func (s *Server) createMachine(w http.ResponseWriter, r *http.Request) {
 		s.forbidden(w, r)
 		return
 	}
+	idemKey, err := idempotencyKey(r)
+	if err != nil {
+		s.badRequest(w, r, err.Error())
+		return
+	}
 	if req.TTLMinutes == 0 && s.defaultTTL > 0 {
 		req.TTLMinutes = s.defaultTTL
 	}
@@ -487,15 +501,52 @@ func (s *Server) createMachine(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	var idemLK string
+	if idemKey != "" {
+		idemLK = idemLookupKey(auth.FromContext(r.Context()).Name, req.Project, idemKey)
+		switch st, e := s.idem.begin(idemLK, idemFingerprint(req)); st {
+		case idemReplay:
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.Header().Set("Idempotent-Replay", "true")
+			w.WriteHeader(e.status)
+			_, _ = w.Write(e.body)
+			return
+		case idemMismatch:
+			s.writeAPIError(w, r, http.StatusUnprocessableEntity, "IDEMPOTENCY_KEY_REUSED", "this Idempotency-Key was already used with a different request body", "Use a new key for a different request.")
+			return
+		case idemInFlight:
+			s.writeAPIError(w, r, http.StatusConflict, "IDEMPOTENCY_IN_PROGRESS", "a request with this Idempotency-Key is still being processed", "Retry shortly with the same key.")
+			return
+		case idemFull:
+			s.writeAPIError(w, r, http.StatusServiceUnavailable, "IDEMPOTENCY_STORE_FULL", "too many idempotency keys are in use", "Retry later or omit the Idempotency-Key header.")
+			return
+		}
+	}
 	unlock, ok := s.enforceQuota(w, r, req.Project, req.MachineSpec)
 	if !ok {
+		if idemLK != "" {
+			s.idem.abandon(idemLK)
+		}
 		return
 	}
 	m, err := s.p.Create(r.Context(), req.Project, req.MachineSpec)
 	unlock()
 	if err != nil {
+		if idemLK != "" {
+			s.idem.abandon(idemLK)
+		}
 		s.writeErr(w, r, err)
 		return
+	}
+	if idemLK != "" {
+		// A replay never repeats the one-time generated password.
+		saved := *m
+		saved.GeneratedPassword = ""
+		if b, mErr := json.Marshal(saved); mErr == nil && len(b) <= idemMaxBody {
+			s.idem.complete(idemLK, http.StatusCreated, append(b, '\n'))
+		} else {
+			s.idem.abandon(idemLK)
+		}
 	}
 	auditNote(r.Context(), req.Project, m.ID)
 	s.metrics.Operation("create")
@@ -513,7 +564,17 @@ func (s *Server) machineAction(w http.ResponseWriter, r *http.Request, action st
 	if !ok {
 		return
 	}
-	machineID := r.PathValue("id")
+	m, err := s.lifecycle(r, project, r.PathValue("id"), action)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	jsonResponse(w, http.StatusOK, m)
+}
+
+// lifecycle runs a start or stop and records the metric and CloudEvent; the
+// caller has already authorised the request for project.
+func (s *Server) lifecycle(r *http.Request, project, machineID, action string) (*model.Machine, error) {
 	var m *model.Machine
 	var err error
 	if action == "start" {
@@ -522,8 +583,7 @@ func (s *Server) machineAction(w http.ResponseWriter, r *http.Request, action st
 		m, err = s.p.Stop(r.Context(), project, machineID)
 	}
 	if err != nil {
-		s.writeErr(w, r, err)
-		return
+		return nil, err
 	}
 	s.metrics.Operation(action)
 	eventType := "io.kryton.machine.started"
@@ -531,7 +591,7 @@ func (s *Server) machineAction(w http.ResponseWriter, r *http.Request, action st
 		eventType = "io.kryton.machine.stopped"
 	}
 	s.events.Publish(r.Context(), eventType, "machines/"+m.ID, map[string]any{"project": project, "machineId": m.ID, "name": m.Spec.Name, "state": m.State})
-	jsonResponse(w, http.StatusOK, m)
+	return m, nil
 }
 
 func (s *Server) deleteMachine(w http.ResponseWriter, r *http.Request) {
@@ -631,10 +691,15 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 500 {
 		limit = v
 	}
+	f, err := parseEventFilter(r)
+	if err != nil {
+		s.badRequest(w, r, err.Error())
+		return
+	}
 	all := s.events.List(500)
 	visible := make([]events.Event, 0, limit)
 	for _, e := range all {
-		if s.eventVisible(p, e) {
+		if s.eventVisible(p, e) && f.match(e) {
 			visible = append(visible, e)
 			if len(visible) == limit {
 				break

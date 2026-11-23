@@ -14,5 +14,5 @@ export function matchesFilter(m: Machine, filter: MachineFilter, search: string)
   if (!byState) return false;
   const s = search.trim().toLowerCase();
   if (!s) return true;
-  return [m.spec.name, m.id, m.spec.image, ...(m.ipAddresses || [])].some((v) => v.toLowerCase().includes(s));
+  return [m.spec.name, m.id, m.spec.image, ...(m.ipAddresses || []), ...Object.entries(m.spec.labels || {}).map(([k, v]) => k + "=" + v)].some((v) => v.toLowerCase().includes(s));
 }

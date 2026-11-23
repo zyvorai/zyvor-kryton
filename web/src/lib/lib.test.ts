@@ -274,5 +274,10 @@ describe('machines filter', () => {
     expect(matchesFilter(m, 'all', '122.9')).toBe(true);
     expect(matchesFilter(m, 'all', 'UBUNTU')).toBe(true);
     expect(matchesFilter(m, 'all', 'nope')).toBe(false);
+    const labelled = machine({ spec: { ...m.spec, labels: { env: 'ci', Team: 'Core' } } });
+    expect(matchesFilter(labelled, 'all', 'env=ci')).toBe(true);
+    expect(matchesFilter(labelled, 'all', 'team=core')).toBe(true);
+    expect(matchesFilter(labelled, 'all', 'env=prod')).toBe(false);
+    expect(matchesFilter(m, 'all', 'env=ci')).toBe(false);
   });
 });

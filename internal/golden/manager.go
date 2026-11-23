@@ -373,7 +373,7 @@ func (m *Manager) writeStatus(workdir string, build model.GoldenBuild) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(workdir, "status.json"), b, 0o600)
+	return writeFileAtomic(filepath.Join(workdir, "status.json"), b, 0o600)
 }
 
 func sortBuilds(items []model.GoldenBuild) {
@@ -384,4 +384,33 @@ func sortBuilds(items []model.GoldenBuild) {
 			}
 		}
 	}
+}
+
+// writeFileAtomic writes via a temp file and rename so concurrent readers
+// polling the status file never observe a truncated, half-written document.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-"+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return nil
 }
