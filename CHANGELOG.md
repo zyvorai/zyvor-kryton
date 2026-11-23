@@ -6,6 +6,20 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+### Changed
+
+- Operator console deps (`web/`): vitest 5.0.3 -> 5.1.1 and @vitejs/plugin-react 6.1.1 -> 6.3.0; embedded bundle in `cmd/krytond/web` rebuilt (typecheck, 38 tests, build pass).
+- Docs CI: Python pin `3.x` -> `3.14`; `requirements-docs.txt` floors raised to mkdocs>=1.6.1 and mkdocs-material>=9.8.2 (current PyPI releases).
+
+### Dependency audit, held back or already current
+
+- Go modules: `go get -u ./... && go mod tidy` changed nothing; gorilla/websocket v1.5.3 and golang.org/x/time v0.16.0 are latest and neither has a newer major module path.
+- Go toolchain: go.mod `go 1.27.1` stays (documented minimum; 1.27.4 is the latest release and the Docker/govulncheck pin). No 1.26.x CI matrix: the module requires 1.27, so a 1.26 leg could not build.
+- Dockerfile: golang:1.27.4 digest re-verified against Docker Hub (unchanged); distroless digest unchanged. Helm has no third-party images.
+- GitHub Actions: all pins already at the verified majors. Unverified against sibling repos and left as is: golangci/golangci-lint-action v9 (latest v9.3.0), golang/govulncheck-action v1 (v1.1.0), aquasecurity/trivy-action v0.36.0 (latest), azure/setup-kubectl v5 (v5.2.0).
+- Node 24 pin already present in CI; local verification ran on Node 22.
+- vendored noVNC stays at 1.5.0 (bundled build needs a reviewed rebuild).
+
 ## [1.4.4] - 2026-11-18
 
 ### Fixed
