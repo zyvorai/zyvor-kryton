@@ -1,0 +1,53 @@
+{{- if .Values.gateway.enabled }}
+# Optional Gateway API front door served by Setura (https://github.com/zyvorai/zyvor-setura-gateway).
+# Install the controller once per cluster:
+#   setura gateway install --image ghcr.io/zyvorai/zyvor-setura-gateway:0.7.0 --namespace setura-system | kubectl apply -f -
+# The Ingress template stays available; enable this instead of ingress.enabled, not as well.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ include "kryton.fullname" . }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: {{ .Values.gateway.httpPort }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- if .Values.gateway.tls.enabled }}
+    - name: https
+      protocol: HTTPS
+      port: {{ .Values.gateway.httpsPort }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Values.gateway.tls.secretName }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- end }}
+{{- range $i, $h := .Values.ingress.hosts }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "kryton.fullname" $ }}-{{ $i }}
+spec:
+  parentRefs:
+    - name: {{ include "kryton.fullname" $ }}
+  hostnames:
+    - {{ $h.host | quote }}
+  rules:
+{{- range $h.paths }}
+    - matches:
+        - path:
+            type: {{ if eq .pathType "Exact" }}Exact{{ else }}PathPrefix{{ end }}
+            value: {{ .path }}
+      backendRefs:
+        - name: {{ include "kryton.fullname" $ }}
+          port: {{ $.Values.service.port }}
+{{- end }}
+{{- end }}
+{{- end }}
