@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/zyvorai/kryton/internal/auth"
 	"github.com/zyvorai/kryton/internal/events"
 	"github.com/zyvorai/kryton/internal/model"
+	"github.com/zyvorai/kryton/internal/provider"
 )
 
 // ---- Idempotency-Key for POST /machines -----------------------------------
@@ -171,6 +173,13 @@ type bulkActionRequest struct {
 	Action   string   `json:"action"`
 	IDs      []string `json:"ids,omitempty"`
 	Selector string   `json:"selector,omitempty"`
+	// DryRun validates every target against its current state and reports
+	// what would happen without changing anything (EC2 DryRun style).
+	DryRun bool `json:"dryRun,omitempty"`
+	// Confirm must be true for a real (non dry-run) bulk delete.
+	Confirm bool `json:"confirm,omitempty"`
+	// SnapshotName names the snapshots of a bulk snapshot.
+	SnapshotName string `json:"snapshotName,omitempty"`
 }
 
 type bulkResult struct {
@@ -178,19 +187,22 @@ type bulkResult struct {
 	Name  string             `json:"name,omitempty"`
 	OK    bool               `json:"ok"`
 	State model.MachineState `json:"state,omitempty"`
-	Error *APIError          `json:"error,omitempty"`
+	// SnapshotID is set by a bulk snapshot.
+	SnapshotID string    `json:"snapshotId,omitempty"`
+	Error      *APIError `json:"error,omitempty"`
 }
 
 type bulkActionResponse struct {
 	Project   string       `json:"project"`
 	Action    string       `json:"action"`
+	DryRun    bool         `json:"dryRun,omitempty"`
 	Total     int          `json:"total"`
 	Succeeded int          `json:"succeeded"`
 	Failed    int          `json:"failed"`
 	Results   []bulkResult `json:"results"`
 }
 
-// bulkMachineAction starts or stops up to 100 machines named by id or by
+// bulkMachineAction starts, stops, snapshots or deletes up to 100 machines named by id or by
 // label selector. Each machine gets its own result; one failure does not
 // stop the rest, and the HTTP status is 200 whenever the request itself was
 // valid (inspect `failed`).
@@ -212,8 +224,22 @@ func (s *Server) bulkMachineAction(w http.ResponseWriter, r *http.Request) {
 		s.forbidden(w, r)
 		return
 	}
-	if req.Action != "start" && req.Action != "stop" {
-		s.badRequest(w, r, `action must be "start" or "stop"`)
+	switch req.Action {
+	case "start", "stop", "snapshot", "delete":
+	default:
+		s.badRequest(w, r, `action must be "start", "stop", "snapshot" or "delete"`)
+		return
+	}
+	if req.Action == "delete" && !req.DryRun && !req.Confirm {
+		s.badRequest(w, r, `bulk delete needs "confirm": true (or "dryRun": true to preview)`)
+		return
+	}
+	if req.SnapshotName != "" && req.Action != "snapshot" {
+		s.badRequest(w, r, "snapshotName only applies to the snapshot action")
+		return
+	}
+	if len(req.SnapshotName) > 128 {
+		s.badRequest(w, r, "snapshotName is at most 128 characters")
 		return
 	}
 	if (len(req.IDs) == 0) == (strings.TrimSpace(req.Selector) == "") {
@@ -259,19 +285,20 @@ func (s *Server) bulkMachineAction(w http.ResponseWriter, r *http.Request) {
 			names[m.ID] = m.Spec.Name
 		}
 	}
-	resp := bulkActionResponse{Project: req.Project, Action: req.Action, Total: len(ids), Results: make([]bulkResult, 0, len(ids))}
+	resp := bulkActionResponse{Project: req.Project, Action: req.Action, DryRun: req.DryRun, Total: len(ids), Results: make([]bulkResult, 0, len(ids))}
+	ac := s.actionContext(r.Context())
 	for _, id := range ids {
 		if r.Context().Err() != nil {
 			break
 		}
-		m, err := s.lifecycle(r, req.Project, id, req.Action)
 		res := bulkResult{ID: id, Name: names[id]}
+		err := s.bulkOne(r, req, ac, &res)
 		if err != nil {
 			c := classifyError(err)
 			res.Error = &APIError{Code: c.Code, Message: c.Message}
 			resp.Failed++
 		} else {
-			res.OK, res.Name, res.State = true, m.Spec.Name, m.State
+			res.OK = true
 			resp.Succeeded++
 		}
 		resp.Results = append(resp.Results, res)
@@ -345,4 +372,43 @@ func (f eventFilter) match(e events.Event) bool {
 		return false
 	}
 	return true
+}
+
+// bulkOne runs (or, for a dry run, validates) one action on one machine and
+// fills res on success.
+func (s *Server) bulkOne(r *http.Request, req bulkActionRequest, ac actionContext, res *bulkResult) error {
+	if req.DryRun {
+		m, err := s.p.Get(r.Context(), req.Project, res.ID)
+		if err != nil {
+			return err
+		}
+		res.Name, res.State = m.Spec.Name, m.State
+		if !hasAction(ac.actionsFor(m.State), req.Action) {
+			return fmt.Errorf("%w: cannot %s a machine that is %s", provider.ErrPrecondition, req.Action, m.State)
+		}
+		return nil
+	}
+	switch req.Action {
+	case "delete":
+		name, err := s.deleteOne(r, req.Project, res.ID)
+		res.Name, res.State = name, model.StateDeleting
+		return err
+	case "snapshot":
+		snap, err := s.snapshotOne(r, req.Project, res.ID, req.SnapshotName)
+		if err != nil {
+			return err
+		}
+		res.SnapshotID = snap.ID
+		if m, gerr := s.p.Get(r.Context(), req.Project, res.ID); gerr == nil {
+			res.Name, res.State = m.Spec.Name, m.State
+		}
+		return nil
+	default:
+		m, err := s.lifecycle(r, req.Project, res.ID, req.Action)
+		if err != nil {
+			return err
+		}
+		res.Name, res.State = m.Spec.Name, m.State
+		return nil
+	}
 }

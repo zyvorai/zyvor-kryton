@@ -32,23 +32,39 @@ func listCommand(c client, args []string) {
 	f := flag.NewFlagSet("list", flag.ExitOnError)
 	project := f.String("project", c.project, "project")
 	selector := f.String("selector", "", `label selector, e.g. "env=ci,tier!=db" or "team in (a,b)"`)
+	state := f.String("state", "", "comma-separated machine states, e.g. running,stopped")
+	name := f.String("name", "", "case-insensitive name substring")
 	_ = f.Parse(reorderFlags(args))
-	c.do("GET", "/api/v1/machines"+query("project", *project, "selector", *selector), nil)
+	c.do("GET", "/api/v1/machines"+query("project", *project, "selector", *selector, "state", *state, "name", *name), nil)
 }
 
 func bulkCommand(c client, args []string) {
 	f := flag.NewFlagSet("bulk", flag.ExitOnError)
 	project := f.String("project", c.project, "project")
 	selector := f.String("selector", "", "label selector choosing the machines")
+	dryRun := f.Bool("dry-run", false, "validate every target and change nothing")
+	confirm := f.Bool("confirm", false, "required for a real bulk delete")
+	snapName := f.String("snapshot-name", "", "name for the snapshots (snapshot action)")
 	_ = f.Parse(reorderFlags(args))
-	if f.NArg() < 1 || (f.Arg(0) != "start" && f.Arg(0) != "stop") {
-		usageExit("bulk requires start|stop and either --selector or MACHINE_ID...")
+	switch f.Arg(0) {
+	case "start", "stop", "snapshot", "delete":
+	default:
+		usageExit("bulk requires start|stop|snapshot|delete and either --selector or MACHINE_ID...")
 	}
 	ids := f.Args()[1:]
 	if (len(ids) == 0) == (*selector == "") {
 		usageExit("bulk needs exactly one of --selector or MACHINE_ID...")
 	}
 	body := map[string]any{"project": *project, "action": f.Arg(0)}
+	if *dryRun {
+		body["dryRun"] = true
+	}
+	if *confirm {
+		body["confirm"] = true
+	}
+	if *snapName != "" {
+		body["snapshotName"] = *snapName
+	}
 	if *selector != "" {
 		body["selector"] = *selector
 	} else {
@@ -65,4 +81,12 @@ func eventsCommand(c client, args []string) {
 	limit := f.String("limit", "50", "max events")
 	_ = f.Parse(reorderFlags(args))
 	c.do("GET", "/api/v1/events"+query("limit", *limit, "type", *typ, "machineId", *machine, "since", *since), nil)
+}
+
+func summaryCommand(c client, args []string) {
+	f := flag.NewFlagSet("summary", flag.ExitOnError)
+	project := f.String("project", c.project, "project")
+	groupBy := f.String("group-by", "", "label key to break the totals down by")
+	_ = f.Parse(reorderFlags(args))
+	c.do("GET", "/api/v1/summary"+query("project", *project, "groupBy", *groupBy), nil)
 }

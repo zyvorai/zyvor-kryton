@@ -338,17 +338,44 @@ func (s *Server) summary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	x := model.Summary{Project: project, Provider: s.p.Name(), Machines: len(ms)}
-	for _, m := range ms {
-		x.CPU += m.Spec.Compute.CPU
-		x.MemoryMiB += m.Spec.Compute.MemoryMiB
+	tally := func(m model.Machine, running, stopped, attention, cpu, mem *int) {
+		*cpu += m.Spec.Compute.CPU
+		*mem += m.Spec.Compute.MemoryMiB
 		switch m.State {
 		case model.StateRunning:
-			x.Running++
+			*running++
 		case model.StateStopped:
-			x.Stopped++
+			*stopped++
 		case model.StateFailed, model.StateUnknown:
-			x.Attention++
+			*attention++
 		}
+	}
+	groupBy := r.URL.Query().Get("groupBy")
+	if groupBy != "" && !labelKeyPattern.MatchString(groupBy) {
+		s.badRequest(w, r, "groupBy must be a label key")
+		return
+	}
+	groups := map[string]*model.SummaryGroup{}
+	for _, m := range ms {
+		tally(m, &x.Running, &x.Stopped, &x.Attention, &x.CPU, &x.MemoryMiB)
+		if groupBy != "" {
+			v := m.Spec.Labels[groupBy]
+			g := groups[v]
+			if g == nil {
+				g = &model.SummaryGroup{Value: v}
+				groups[v] = g
+			}
+			g.Machines++
+			tally(m, &g.Running, &g.Stopped, &g.Attention, &g.CPU, &g.MemoryMiB)
+		}
+	}
+	if groupBy != "" {
+		x.GroupBy = groupBy
+		x.Groups = make([]model.SummaryGroup, 0, len(groups))
+		for _, g := range groups {
+			x.Groups = append(x.Groups, *g)
+		}
+		sort.Slice(x.Groups, func(i, j int) bool { return x.Groups[i].Value < x.Groups[j].Value })
 	}
 	jsonResponse(w, http.StatusOK, x)
 }
@@ -369,12 +396,20 @@ func (s *Server) listMachines(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ms = filterBySelector(ms, sel)
+	mf, err := parseMachineFilter(r)
+	if err != nil {
+		s.badRequest(w, r, err.Error())
+		return
+	}
+	ms = mf.apply(ms)
 	limit := 50
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 500 {
 		limit = v
 	}
+	ac := s.actionContext(r.Context())
 	for i := range ms {
 		s.applyExpiry(&ms[i])
+		ac.annotate(&ms[i])
 	}
 	page, next, err := paginateMachines(ms, limit, r.URL.Query().Get("cursor"))
 	if err != nil {
@@ -433,6 +468,7 @@ func (s *Server) getMachine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.applyExpiry(m)
+	s.actionContext(r.Context()).annotate(m)
 	jsonResponse(w, http.StatusOK, m)
 }
 
@@ -599,22 +635,40 @@ func (s *Server) deleteMachine(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	machineID := r.PathValue("id")
-	m, err := s.p.Get(r.Context(), project, machineID)
-	if err != nil {
+	if _, err := s.deleteOne(r, project, r.PathValue("id")); err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteOne deletes a machine and records the metric and CloudEvent; the
+// caller has already authorised the request. It returns the machine name.
+func (s *Server) deleteOne(r *http.Request, project, machineID string) (string, error) {
+	m, err := s.p.Get(r.Context(), project, machineID)
+	if err != nil {
+		return "", err
+	}
 	if err := s.p.Delete(r.Context(), project, machineID); err != nil {
-		s.writeErr(w, r, err)
-		return
+		return "", err
 	}
 	if s.schedules != nil {
 		s.schedules.ForgetMachine(project, machineID)
 	}
 	s.metrics.Operation("delete")
 	s.events.Publish(r.Context(), "io.kryton.machine.deleted", "machines/"+machineID, map[string]any{"project": project, "machineId": machineID, "name": m.Spec.Name})
-	w.WriteHeader(http.StatusNoContent)
+	return m.Spec.Name, nil
+}
+
+// snapshotOne takes a snapshot and records the metric and CloudEvent.
+func (s *Server) snapshotOne(r *http.Request, project, machineID, name string) (*model.Snapshot, error) {
+	snap, err := s.p.Snapshot(r.Context(), project, machineID, name)
+	if err != nil {
+		return nil, err
+	}
+	s.metrics.Operation("snapshot")
+	s.events.Publish(r.Context(), "io.kryton.snapshot.created", "snapshots/"+snap.ID, map[string]any{"project": project, "machineId": snap.MachineID, "snapshotId": snap.ID, "name": snap.Name})
+	return snap, nil
 }
 
 func (s *Server) snapshotMachine(w http.ResponseWriter, r *http.Request) {
@@ -629,13 +683,11 @@ func (s *Server) snapshotMachine(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	snap, err := s.p.Snapshot(r.Context(), project, r.PathValue("id"), req.Name)
+	snap, err := s.snapshotOne(r, project, r.PathValue("id"), req.Name)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	s.metrics.Operation("snapshot")
-	s.events.Publish(r.Context(), "io.kryton.snapshot.created", "snapshots/"+snap.ID, map[string]any{"project": project, "machineId": snap.MachineID, "snapshotId": snap.ID, "name": snap.Name})
 	jsonResponse(w, http.StatusCreated, snap)
 }
 
@@ -714,6 +766,11 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 		s.writeAPIError(w, r, http.StatusNotImplemented, "STREAM_UNSUPPORTED", "streaming unsupported")
 		return
 	}
+	f, err := parseEventFilter(r)
+	if err != nil {
+		s.badRequest(w, r, err.Error())
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -735,7 +792,7 @@ func (s *Server) streamEvents(w http.ResponseWriter, r *http.Request) {
 			if !open {
 				return
 			}
-			if !s.eventVisible(p, e) {
+			if !s.eventVisible(p, e) || !f.match(e) {
 				continue
 			}
 			b, _ := json.Marshal(e)

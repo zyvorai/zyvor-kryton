@@ -332,7 +332,7 @@ func TestBulkActionsRejects(t *testing.T) {
 		many[i] = fmt.Sprintf("id-%d", i)
 	}
 	bad := map[string]any{
-		"unknown action":  map[string]any{"action": "delete", "ids": []string{"a"}},
+		"unknown action":  map[string]any{"action": "reboot", "ids": []string{"a"}},
 		"missing action":  map[string]any{"ids": []string{"a"}},
 		"neither":         map[string]any{"action": "stop"},
 		"both":            map[string]any{"action": "stop", "ids": []string{"a"}, "selector": "env=ci"},

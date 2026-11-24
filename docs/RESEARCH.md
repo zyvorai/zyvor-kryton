@@ -50,3 +50,16 @@ Not fetched, so everything about them is **[U]**: libvirt, Harvester, Cluster AP
 ## Boundaries checked
 
 From CONTRIBUTING.md, README and docs: provider-specific behaviour stays behind `internal/provider.Provider` (all four features are API-layer only); raw provider identifiers are not the public machine ID (selectors and bulk results use Kryton UUIDs); new Go files carry the licence header; docs, README counts and the `[Unreleased]` changelog are updated; the three copies of `openapi.yaml` stay identical; the generated dockur password is "never stored or returned again", so an idempotent replay returns the machine without `generatedPassword`; the project stays at two Go dependencies; no Microsoft media or activation features are touched.
+
+## Round 2 (2026-11-24)
+
+Searches run this round (web search summaries, not full page reads, so detail beyond what is stated is **[U]**):
+
+| Source | What it showed | Used for |
+|---|---|---|
+| Proxmox VE API and `pve-bulk` (pve.proxmox.com `qm(1)`, github.com/ponceto/pve-bulk) | `qm clone --snapname` clones from a snapshot; tags are plain metadata; there is no native bulk endpoint, so bulk snapshot/rollback/delete lives in community scripts; clones lock the guest. | Bulk `snapshot` and `delete` as a built-in, with per-machine results. Clone-from-snapshot stays rejected (provider work). |
+| Redfish ResetType (DMTF DSP2046, vendor examples) | Services advertise allowable actions per resource (`ResetType@Redfish.AllowableValues`, `ResetActionInfo`); values differ by implementation, so clients must read them from the service. | `allowedActions` on machines, computed from state and provider support (rank 5 from round 1, now built). |
+| AWS EC2 `RebootInstances` / `DryRun` (docs.aws.amazon.com) | Actions take a list of ids; `DryRun` checks permission and state without acting; targets are chosen with a separate filtered describe call. | `dryRun` on bulk actions, plus `state`/`name` list filters to choose targets. |
+| Google Compute Engine labels (cloud.google.com `instances.setLabels`) | Labels are mutated with a `labelFingerprint` for optimistic concurrency (`412` on a stale value). | Considered for label editing; **deferred**: labels live in the providers, so mutating them needs a change to all four, which can't be tested here without Docker, libvirt or Kubernetes. |
+
+Decisions: built bulk snapshot/delete with `dryRun` and a delete `confirm` guard (the round 1 note "bulk delete is intentionally not offered" is superseded by the guard), `allowedActions`, `state`/`name` filters, `groupBy` summaries and SSE event filters. All are API-layer only. Bulk restart stays out: only guest-capable providers can restart.

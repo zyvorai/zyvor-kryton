@@ -40,7 +40,7 @@ GET    /api/v1/jobs/{id}
 GET    /api/v1/summary?project=<project>
 GET    /api/v1/machines?project=<project>&limit=<n>&cursor=<opaque>&selector=<expr>
 POST   /api/v1/machines                  # optional Idempotency-Key header
-POST   /api/v1/machines/actions          # bulk start/stop by ids or selector
+POST   /api/v1/machines/actions          # bulk start/stop/snapshot/delete by ids or selector (dryRun, confirm)
 GET    /api/v1/machines/{id}?project=<project>
 GET    /api/v1/machines/{id}/console?project=<project>
 POST   /api/v1/machines/{id}/console-ticket?project=<project>
@@ -98,14 +98,31 @@ krytonctl list --selector 'env=ci,!pinned'
 krytonctl create --idempotency-key order-8841 --label env=ci ci-01
 ```
 
-**Bulk start/stop.** `POST /api/v1/machines/actions` takes `{"project","action":"start|stop","ids":[...]}` or `{"action","selector":"env=ci"}` (exactly one of `ids` and `selector`, at most 100 machines; a selector that matches more is rejected). Operator role is required. The response is `200` with `total`, `succeeded`, `failed` and a per-machine `results` list (`ok`, `state`, or an `error` with `code`), so one missing machine does not hide the rest. Each success emits the normal started/stopped CloudEvent. Bulk delete is intentionally not offered.
+**Bulk actions.** `POST /api/v1/machines/actions` takes `{"project","action":"start|stop|snapshot|delete","ids":[...]}` or `{"action","selector":"env=ci"}` (exactly one of `ids` and `selector`, at most 100 machines; a selector that matches more is rejected). Operator role is required. The response is `200` with `total`, `succeeded`, `failed` and a per-machine `results` list (`ok`, `state`, or an `error` with `code`), so one missing machine does not hide the rest. Each success emits the normal CloudEvent. Two guards make the destructive and slow cases safe. `"dryRun": true` checks every target against its current state (the same rules as `allowedActions`) and changes nothing: results come back per machine, an action the state does not allow is `PRECONDITION_FAILED`, and no events are emitted. A real `delete` is refused with `400` unless `"confirm": true` is sent, so run the dry run first. `"snapshotName"` names the snapshots of a `snapshot` action; each result carries its `snapshotId`.
 
 ```bash
 krytonctl bulk stop --selector 'env=ci'
 krytonctl bulk start 3f2c... 9a41...
+krytonctl bulk delete --selector 'env=tmp' --dry-run
+krytonctl bulk delete --selector 'env=tmp' --confirm
+krytonctl bulk snapshot --selector 'env=ci' --snapshot-name pre-upgrade
 ```
 
-**Event filters.** `GET /api/v1/events` accepts `type` (comma-separated, at most 8, a trailing `*` matches a prefix such as `io.kryton.machine.*`), `machineId` and `since` (RFC 3339), applied before `limit`. The window searched is the in-memory ring of the last 500 events.
+**List filters.** `GET /api/v1/machines` also takes `state` (comma-separated, for example `running,stopped`) and `name` (case-insensitive substring, at most 128 characters), applied with `selector` before pagination. An unknown state is `400`.
+
+```bash
+krytonctl list --state stopped --name web
+```
+
+**`allowedActions`.** Every machine on `GET /machines` and `GET /machines/{id}` lists the lifecycle actions it accepts right now (`start`, `stop`, `restart`, `snapshot`, `delete`), derived from its state and what the provider supports (`snapshot` needs snapshot support, `restart` needs a guest-capable provider). It is advisory: the provider still validates each call. UIs can enable buttons from it instead of re-implementing state rules.
+
+**Summary by label.** `GET /api/v1/summary?groupBy=team` adds `groups`, one entry per value of that label with machine, running, stopped, attention, CPU and memory totals; machines without the label form the group with an empty `value`.
+
+```bash
+krytonctl summary --group-by team
+```
+
+**Event filters.** `GET /api/v1/events` accepts `type` (comma-separated, at most 8, a trailing `*` matches a prefix such as `io.kryton.machine.*`), `machineId` and `since` (RFC 3339), applied before `limit`. The window searched is the in-memory ring of the last 500 events. `GET /api/v1/events/stream` accepts the same `type` and `machineId` filters, so a consumer can subscribe to just `io.kryton.machine.*` for one machine.
 
 ```bash
 krytonctl events --type 'io.kryton.machine.*' --machine 3f2c...

@@ -223,6 +223,13 @@ paths:
       tags: [machines]
       parameters:
         - $ref: '#/components/parameters/Project'
+        - in: query
+          name: groupBy
+          description: |
+            A label key. Adds `groupBy` and `groups` (one entry per label value with
+            machine, running, stopped, attention, cpu and memoryMiB counts; an empty
+            `value` groups the machines without the label).
+          schema: {type: string, maxLength: 128}
       responses:
         '200': {description: Project summary}
   /api/v1/machines:
@@ -246,6 +253,14 @@ paths:
             1024 bytes, 16 requirements and 16 values per set. `!=` and `notin` also match
             machines without the key. Pagination applies to the filtered set.
           schema: {type: string, maxLength: 1024}
+        - in: query
+          name: state
+          description: Comma-separated machine states to keep (for example `running,stopped`).
+          schema: {type: string}
+        - in: query
+          name: name
+          description: Case-insensitive substring of the machine name (at most 128 characters).
+          schema: {type: string, maxLength: 128}
       responses:
         '200': {description: Machines}
         '400': {description: Invalid selector}
@@ -283,13 +298,18 @@ paths:
   /api/v1/machines/actions:
     post:
       tags: [machines]
-      summary: Start or stop many machines by id or label selector (operator)
+      summary: Start, stop, snapshot or delete many machines by id or label selector (operator)
       description: |
-        Runs `start` or `stop` on up to 100 machines named by `ids` or matched by
+        Runs `start`, `stop`, `snapshot` or `delete` on up to 100 machines named by `ids` or matched by
         `selector` (exactly one of the two). Each machine gets its own result and one
         failure does not stop the others; the response is `200` whenever the request was
         valid, so check `failed`. A selector matching more than 100 machines is rejected.
-        Each success emits the usual `io.kryton.machine.started` / `stopped` CloudEvent.
+        Each success emits the usual CloudEvent (`started`, `stopped`, `snapshot.created`,
+        `deleted`). `dryRun: true` validates every target against its current state (the
+        same rules as `allowedActions`) and changes nothing: it returns per-machine
+        results, `PRECONDITION_FAILED` for an action the state does not allow, and emits
+        no events. A real `delete` requires `confirm: true`; `snapshotName` names the
+        snapshots of a `snapshot` action.
       requestBody:
         required: true
         content:
@@ -300,7 +320,10 @@ paths:
               additionalProperties: false
               properties:
                 project: {type: string}
-                action: {type: string, enum: [start, stop]}
+                action: {type: string, enum: [start, stop, snapshot, delete]}
+                dryRun: {type: boolean}
+                confirm: {type: boolean}
+                snapshotName: {type: string, maxLength: 128}
                 ids:
                   type: array
                   maxItems: 100
@@ -316,6 +339,7 @@ paths:
                 properties:
                   project: {type: string}
                   action: {type: string}
+                  dryRun: {type: boolean}
                   total: {type: integer}
                   succeeded: {type: integer}
                   failed: {type: integer}
@@ -328,6 +352,7 @@ paths:
                         name: {type: string}
                         ok: {type: boolean}
                         state: {type: string}
+                        snapshotId: {type: string}
                         error:
                           type: object
                           properties:
@@ -341,6 +366,11 @@ paths:
       - $ref: '#/components/parameters/Project'
     get:
       tags: [machines]
+      description: |
+        The machine includes `allowedActions`, the lifecycle actions it accepts in its
+        current state (`start`, `stop`, `restart`, `snapshot`, `delete`); `restart` and
+        `snapshot` only appear when the provider supports them. It is advisory: the
+        provider still validates each call. The same field is on list responses.
       responses:
         '200': {description: Machine}
         '404': {description: Not found}
@@ -1020,6 +1050,14 @@ paths:
     get:
       tags: [events]
       summary: Server-sent CloudEvent stream
+      description: Accepts the same `type` and `machineId` filters as `/api/v1/events`; `since` is accepted but live events are always newer. An invalid filter is `400` before the stream starts.
+      parameters:
+        - in: query
+          name: type
+          schema: {type: string}
+        - in: query
+          name: machineId
+          schema: {type: string}
       responses:
         '200':
           description: SSE stream
