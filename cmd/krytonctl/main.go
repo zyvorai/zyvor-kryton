@@ -63,6 +63,8 @@ func main() {
 		listCommand(c, os.Args[2:])
 	case "bulk":
 		bulkCommand(c, os.Args[2:])
+	case "summary":
+		summaryCommand(c, os.Args[2:])
 	case "images":
 		c.do("GET", "/api/v1/images", nil)
 	case "events":
@@ -331,7 +333,8 @@ func env(k, d string) string {
 func fatal(err error) { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
 func usage() {
 	fmt.Println(`krytonctl commands:
-  list [--selector 'env=ci,tier!=db']
+  list [--selector 'env=ci,tier!=db'] [--state running,stopped] [--name SUBSTR]
+  summary [--group-by LABEL_KEY]                   machine totals, optionally per label value
   create NAME [--image ID --cpu N --memory MiB --disk GiB --network NAD --ttl MIN --label k=v ... --idempotency-key KEY]
     dockur flags (provider=dockur):
       --dockur-username --dockur-password --dockur-hostname
@@ -358,7 +361,8 @@ func usage() {
   get MACHINE_ID
   start MACHINE_ID
   stop MACHINE_ID
-  bulk start|stop (--selector EXPR | MACHINE_ID...)   up to 100 machines, per-machine results
+  bulk start|stop|snapshot|delete (--selector EXPR | MACHINE_ID...) [--dry-run] [--confirm] [--snapshot-name N]
+                                                   up to 100 machines, per-machine results; delete needs --confirm or --dry-run
   events [--type T[,T]] [--machine ID] [--since RFC3339] [--limit N]
   snapshot MACHINE_ID [--name NAME]
   snapshots MACHINE_ID

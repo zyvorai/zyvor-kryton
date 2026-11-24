@@ -12,6 +12,11 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 - `Idempotency-Key` on `POST /api/v1/machines`: a retried create returns the original `201` with `Idempotent-Replay: true` instead of a duplicate or a `409`; reuse with a different body is `422 IDEMPOTENCY_KEY_REUSED`, an in-flight retry `409 IDEMPOTENCY_IN_PROGRESS`. Keys are per caller and project, kept 24 h in memory (lost on restart), at most 10,000; a replay never repeats the one-time generated password. `krytonctl create --idempotency-key`.
 - Bulk lifecycle: `POST /api/v1/machines/actions` starts or stops up to 100 machines by `ids` or `selector` with per-machine results; `krytonctl bulk`.
 - Event filters on `GET /api/v1/events`: `type` (exact or trailing `*`), `machineId`, `since`; `krytonctl events --type --machine --since`.
+- Bulk actions grow: `POST /api/v1/machines/actions` now also runs `snapshot` (with `snapshotName`, returning each `snapshotId`) and `delete`. `dryRun: true` validates every target against its state and changes nothing (EC2 `DryRun` style); a real bulk delete requires `confirm: true`. `krytonctl bulk delete|snapshot --dry-run --confirm --snapshot-name`.
+- `allowedActions` on every machine in `GET /machines` and `GET /machines/{id}` (Redfish-style discoverability), derived from state and provider support.
+- List filters `state` and `name` on `GET /machines`; `krytonctl list --state --name`.
+- `GET /api/v1/summary?groupBy=<label key>` breaks the totals down per label value; `krytonctl summary --group-by`.
+- `GET /api/v1/events/stream` accepts the `type` and `machineId` filters of `GET /events`.
 - `docs/RESEARCH.md`: survey of machine-management APIs with ranked ideas and sources.
 
 ### Fixed

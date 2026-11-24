@@ -53,3 +53,38 @@ func TestFleetCommandsHitTheRightEndpoints(t *testing.T) {
 		t.Errorf("bulk ids body = %v", b)
 	}
 }
+
+func TestFleetV2Commands(t *testing.T) {
+	c, got := capture(t)
+	listCommand(c, []string{"--state", "running,stopped", "--name", "web"})
+	summaryCommand(c, []string{"--group-by", "team"})
+	bulkCommand(c, []string{"delete", "--selector", "env=tmp", "--dry-run"})
+	bulkCommand(c, []string{"delete", "m1", "--confirm"})
+	bulkCommand(c, []string{"snapshot", "--selector", "env=ci", "--snapshot-name", "pre"})
+
+	want := []struct{ method, path, rawQuery string }{
+		{"GET", "/api/v1/machines", "name=web&project=lab&state=running%2Cstopped"},
+		{"GET", "/api/v1/summary", "groupBy=team&project=lab"},
+		{"POST", "/api/v1/machines/actions", ""},
+		{"POST", "/api/v1/machines/actions", ""},
+		{"POST", "/api/v1/machines/actions", ""},
+	}
+	if len(*got) != len(want) {
+		t.Fatalf("requests=%d want %d: %+v", len(*got), len(want), *got)
+	}
+	for i, w := range want {
+		g := (*got)[i]
+		if g.Method != w.method || g.Path != w.path || g.RawQuery != w.rawQuery {
+			t.Errorf("request %d = %s %s ?%s, want %s %s ?%s", i, g.Method, g.Path, g.RawQuery, w.method, w.path, w.rawQuery)
+		}
+	}
+	if b := (*got)[2].Body; b["action"] != "delete" || b["dryRun"] != true || b["selector"] != "env=tmp" || b["confirm"] != nil {
+		t.Errorf("dry-run delete body = %v", b)
+	}
+	if b := (*got)[3].Body; b["confirm"] != true || b["dryRun"] != nil || !reflect.DeepEqual(b["ids"], []any{"m1"}) {
+		t.Errorf("confirmed delete body = %v", b)
+	}
+	if b := (*got)[4].Body; b["action"] != "snapshot" || b["snapshotName"] != "pre" {
+		t.Errorf("snapshot body = %v", b)
+	}
+}

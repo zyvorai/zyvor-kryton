@@ -158,6 +158,10 @@ type Machine struct {
 	UpdatedAt       time.Time   `json:"updatedAt"`
 	// ExpiresAt is derived from Spec.TTLMinutes; nil means the machine never expires.
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// AllowedActions lists the lifecycle actions the machine accepts in its
+	// current state (start, stop, restart, snapshot, delete). It is derived
+	// by the API layer on GET responses and is advisory, not a lock.
+	AllowedActions []string `json:"allowedActions,omitempty"`
 	// GeneratedPassword is set only on the Create response, and only when
 	// the caller supplied no dockur password. It is never stored or
 	// returned again.
@@ -244,6 +248,21 @@ type DoctorReport struct {
 type Summary struct {
 	Project   string `json:"project"`
 	Provider  string `json:"provider"`
+	Machines  int    `json:"machines"`
+	Running   int    `json:"running"`
+	Stopped   int    `json:"stopped"`
+	Attention int    `json:"attention"`
+	CPU       int    `json:"cpu"`
+	MemoryMiB int    `json:"memoryMiB"`
+	// GroupBy and Groups are set when the caller asks for ?groupBy=<label key>.
+	GroupBy string         `json:"groupBy,omitempty"`
+	Groups  []SummaryGroup `json:"groups,omitempty"`
+}
+
+// SummaryGroup is the summary of the machines sharing one label value.
+// An empty Value groups the machines that do not carry the label.
+type SummaryGroup struct {
+	Value     string `json:"value"`
 	Machines  int    `json:"machines"`
 	Running   int    `json:"running"`
 	Stopped   int    `json:"stopped"`
