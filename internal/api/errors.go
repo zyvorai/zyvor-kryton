@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/zyvorai/kryton/internal/kubeapi"
+	"github.com/zyvorai/kryton/internal/protect"
 	"github.com/zyvorai/kryton/internal/provider"
 )
 
@@ -25,6 +26,12 @@ func classifyError(err error) classifiedError {
 		return classifiedError{Status: http.StatusInternalServerError, Code: "INTERNAL", Message: "unknown error"}
 	}
 	switch {
+	case errors.Is(err, protect.ErrProtected):
+		return classifiedError{Status: http.StatusConflict, Code: "MACHINE_PROTECTED", Message: err.Error(), Hint: "Remove the protection first: PUT /api/v1/machines/{id}/protection with {\"protected\": false}."}
+	case errors.Is(err, protect.ErrDeleting):
+		return classifiedError{Status: http.StatusConflict, Code: "CONFLICT", Message: err.Error(), Hint: "The delete was accepted before the protection request."}
+	case errors.Is(err, protect.ErrReason):
+		return classifiedError{Status: http.StatusBadRequest, Code: "INVALID_REQUEST", Message: err.Error(), Hint: "Shorten the reason and retry."}
 	case errors.Is(err, provider.ErrNotFound):
 		return classifiedError{Status: http.StatusNotFound, Code: "NOT_FOUND", Message: "resource not found", Hint: "Refresh the machine list, or check the project query parameter."}
 	case errors.Is(err, provider.ErrConflict):

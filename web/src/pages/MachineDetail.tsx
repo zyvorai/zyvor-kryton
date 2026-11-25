@@ -13,6 +13,8 @@ import JobConsole from '../components/JobConsole';
 import Icon from '../components/Icon';
 import { JobsPanel, ReadinessBar, SharedPanel } from '../components/GuestPanels';
 import { hasShared } from '../lib/guest';
+import { allows } from '../lib/fleet';
+import SchedulesPanel from '../components/SchedulesPanel';
 import type { Machine, Snapshot } from '../types';
 
 export default function MachineDetail() {
@@ -127,6 +129,22 @@ export default function MachineDetail() {
       setBusy('');
     }
   };
+  const toggleProtection = async () => {
+    const protect = !m!.protection;
+    const reason = await app.confirm(
+      protect
+        ? {
+            title: `Protect ${m!.spec.name}?`,
+            message: 'Delete, bulk delete and TTL expiry are refused until the protection is removed.',
+            input: { label: 'Reason (optional)', placeholder: 'production database' },
+            confirmLabel: 'Protect',
+          }
+        : { title: `Remove protection from ${m!.spec.name}?`, message: 'The machine can be deleted again, including by TTL expiry.', confirmLabel: 'Remove protection' },
+    );
+    if (reason === null) return;
+    const body = protect ? { protected: true, ...(reason ? { reason } : {}) } : { protected: false };
+    await act('protect', () => api(path('/protection'), { method: 'PUT', body: JSON.stringify(body) }), protect ? 'Machine protected' : 'Protection removed');
+  };
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -163,13 +181,13 @@ export default function MachineDetail() {
         ) : null}
 
         <div className="detail-actions">
-          {app.canOperate && (
+          {app.canOperate && allows(m, m.state === 'running' ? 'stop' : 'start') && (
             <button type="button" className={m.state === 'running' ? 'btn-secondary' : 'primary'} onClick={power} disabled={!!busy}>
               <Icon name="power" size={14} />
               {busy === 'start' || busy === 'stop' ? 'Working…' : m.state === 'running' ? 'Stop' : 'Start'}
             </button>
           )}
-          {dockur && app.canOperate && m.state === 'running' && (
+          {dockur && app.canOperate && allows(m, 'restart') && (
             <button type="button" className="btn-secondary" onClick={restart} disabled={!!busy}>
               <Icon name="refresh" size={14} />
               {busy === 'restart' ? 'Restarting…' : 'Restart'}
@@ -193,19 +211,37 @@ export default function MachineDetail() {
               Console
             </a>
           )}
-          {app.caps?.snapshots && app.canOperate && (
+          {app.caps?.snapshots && app.canOperate && allows(m, 'snapshot') && (
             <button type="button" className="btn-secondary" onClick={snapshot} disabled={!!busy}>
               <Icon name="camera" size={14} />
               Snapshot
             </button>
           )}
           {app.canOperate && (
-            <button type="button" className="danger" onClick={remove} disabled={!!busy}>
+            <button type="button" className="btn-secondary" onClick={toggleProtection} disabled={!!busy}>
+              {m.protection ? 'Remove protection' : 'Protect'}
+            </button>
+          )}
+          {app.canOperate && (m.protection || allows(m, 'delete')) && (
+            <button
+              type="button"
+              className="danger"
+              onClick={remove}
+              disabled={!!busy || !!m.protection}
+              title={m.protection ? 'Delete protected. Remove the protection first.' : undefined}
+            >
               <Icon name="trash" size={14} />
               {busy === 'delete' ? 'Deleting…' : 'Delete'}
             </button>
           )}
         </div>
+
+        {m.protection && (
+          <p className="protection-note" role="note">
+            Delete protected{m.protection.reason ? `: ${m.protection.reason}` : ''}
+            {m.protection.setBy ? ` (set by ${m.protection.setBy})` : ''}
+          </p>
+        )}
 
         <div className="detail-stats">
           <div>
@@ -288,6 +324,8 @@ export default function MachineDetail() {
             )}
           </section>
         )}
+
+        <SchedulesPanel key={m.id} m={m} onRan={load} />
 
         {m.provider === 'dockur' && m.spec.dockur && <DockurSummary m={m} />}
 

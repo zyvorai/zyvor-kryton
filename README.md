@@ -17,7 +17,7 @@
 
 **A control plane for Windows and Linux machines.** Portals, CI and automation talk to one REST + CloudEvents contract whether the backend is an in-memory **demo**, real Windows via **[dockur/windows](https://github.com/dockur/windows)** on a lab host, Linux cloud images on a KVM host via **libvirt**, or Windows and Linux VMs on **KubeVirt**.
 
-**4 providers, 1 contract** · **11 Linux templates** · **REST + CloudEvents + OpenAPI** · **Snapshots on CSI** · **Hashed API keys** · **2 Go dependencies**
+**4 providers, 1 contract** · **11 Linux templates** · **REST + CloudEvents + OpenAPI** · **Snapshots on CSI** · **Hashed API keys** · **2 direct Go dependencies**
 
 📖 **[User guide](docs/USER-GUIDE.md)** · **[Product docs](https://zyvor.dev/docs/kryton?utm_source=github&utm_medium=kryton&utm_campaign=readme_hero)** · **[API](docs/API.md)** · **[GA checklist](docs/GA.md)**
 
@@ -35,6 +35,7 @@ From [CHANGELOG.md](CHANGELOG.md) (1.1.0 to 1.4.4):
 | **Unattended Windows workflows** | dockur machines can mount a host-managed shared folder and an OEM script, run guest **jobs** (`krytonctl job-run --wait`), expose a real **readiness probe** (`/machines/{id}/ready`: container, RDP handshake, agent heartbeat), restart gracefully, and report install progress. Passwords are generated when omitted, and RDP and the console bind to loopback unless you opt in with `publicBind`. |
 | **API rate limiting** | `KRYTON_RATE_LIMIT_RPS` / `KRYTON_RATE_LIMIT_BURST`: a per-caller token bucket keyed by API-key name, returning `429` / `RATE_LIMITED`. Off by default. |
 | **Fleet operations** | Label selectors on `GET /machines?selector=`, `Idempotency-Key` on create, bulk start/stop/snapshot/delete by id or selector with `dryRun` and a delete `confirm` guard (`POST /machines/actions`, up to 100 machines, per-machine results), `allowedActions` on machines, `state`/`name` list filters, `summary?groupBy=` and event filters (`type`, `machineId`, `since`) on both the list and the SSE stream. See [docs/API.md](docs/API.md#fleet-operations); research and ranked ideas in [docs/RESEARCH.md](docs/RESEARCH.md). |
+| **Guard rails** | Delete protection (blocks delete, bulk delete and TTL expiry), snapshot retention and run-now for schedules, auto-disable after repeated failures, and a project-wide snapshot inventory. The web console covers these plus bulk actions with a dry-run preview. See [docs/API.md](docs/API.md#fleet-operations). |
 | **Pagination** | `GET /api/v1/machines?limit=&cursor=` with `nextCursor`, matching the events API. |
 | **Helm for operations** | `serviceMonitor` and `podDisruptionBudget` templates, plus a chart README for every values key and overlay. |
 | **KubeVirt production scripts** | `scripts/setup-kubevirt-production.sh` automates golden-image build and CDI bootstrap end to end. |

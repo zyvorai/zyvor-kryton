@@ -63,3 +63,24 @@ Searches run this round (web search summaries, not full page reads, so detail be
 | Google Compute Engine labels (cloud.google.com `instances.setLabels`) | Labels are mutated with a `labelFingerprint` for optimistic concurrency (`412` on a stale value). | Considered for label editing; **deferred**: labels live in the providers, so mutating them needs a change to all four, which can't be tested here without Docker, libvirt or Kubernetes. |
 
 Decisions: built bulk snapshot/delete with `dryRun` and a delete `confirm` guard (the round 1 note "bulk delete is intentionally not offered" is superseded by the guard), `allowedActions`, `state`/`name` filters, `groupBy` summaries and SSE event filters. All are API-layer only. Bulk restart stays out: only guest-capable providers can restart.
+
+## Round 3 (2026-11-25): VM fleet consoles
+
+Web searches this round; the pages marked "fetched" were also read directly (through a summarising fetcher, so quotes are short). Anything else is a search summary and is **[U]** beyond what is stated.
+
+| Source | Read | What it showed | Used for |
+|---|---|---|---|
+| Proxmox `qm.conf`, https://pve.proxmox.com/wiki/Manual:_qm.conf | fetched (first part) | `protection`: "This will disable the remove VM and remove disk operations." `tags` are "only meta information"; `startup` gives ordered start/stop with delays. | Delete protection. Ordered startup deferred. |
+| Proxmox GUI chapter, https://pve.proxmox.com/pve-docs/chapter-pve-gui.html | fetched | Tag view, Bulk Start / Shutdown / Migrate on a node, task log, cluster search. | Bulk actions and filters in the web console. |
+| Incus instance options, https://linuxcontainers.org/incus/docs/main/reference/instance_options/ | fetched | `security.protection.delete` "Prevents the instance from being deleted"; `snapshots.schedule`, `snapshots.expiry`, `boot.autostart.priority`. | Delete protection; retention. |
+| Harvester backup and snapshot schedules, https://docs.harvesterhci.io/v1.8/vm/backup-restore | fetched | A schedule keeps a "retain" count, deleting the oldest beyond it, and is suspended after "Max Failure" consecutive failures; resume is manual. | `retain`, `maxFailures`. |
+| OKD VM delete protection, https://docs.okd.io/4.20/virt/managing_vms/virt-enabling-disabling-vm-delete-protection.html | search summary (the fetched page did not include the body) | Label `kubevirt.io/vm-delete-protection`; the console disables Delete while set. **[U]** | Disabled Delete button in the console. |
+| KubeVirt snapshot/restore guide, https://kubevirt.io/user-guide/storage/snapshot_restore_api/ | search summary | `failureDeadline` on snapshots; no retention or schedule feature was found. **[U]** | Retention lives in Kryton, and counts only ready snapshots because creation is asynchronous. |
+
+Decisions:
+
+- **Delete protection** (built) is held by the API layer, so all four providers get it without provider changes. The cost: it does not stop `kubectl delete`, and on the Helm chart's `emptyDir` it does not survive pod replacement. Storing it as a VM label (the KubeVirt way) would need provider work that cannot be tested here without a cluster.
+- **Retention** (built) only deletes snapshots the schedule itself recorded, never by name pattern, and waits for N ready ones. Age-based expiry (Incus) was not built: count-based retention cannot delete the last good copy when the schedule stops running.
+- **Run now** and the **snapshot inventory** (built) support the two above; neither is copied from a fetched page.
+- **Ordered or delayed startup** (Proxmox `startup`, Incus `boot.autostart.priority`): deferred; it needs a long-running operation resource rather than one synchronous request.
+- **Live migration, clone, resize**: still rejected for the reasons in round 1.

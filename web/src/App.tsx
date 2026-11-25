@@ -10,6 +10,7 @@ import ConfirmDialog from './components/ConfirmDialog';
 import Login from './pages/Login';
 import Overview from './pages/Overview';
 import Machines from './pages/Machines';
+import Fleet from './pages/Fleet';
 import Images from './pages/Images';
 import Jobs from './pages/Jobs';
 import Activity from './pages/Activity';
@@ -92,6 +93,7 @@ function Shell({ theme, onToggleTheme, onSignOut }: { theme: Theme; onToggleThem
           <>
             {app.page === 'overview' && <Overview />}
             {app.page === 'machines' && <Machines />}
+            {app.page === 'fleet' && <Fleet />}
             {app.page === 'images' && <Images />}
             {app.page === 'jobs' && <Jobs />}
             {app.page === 'activity' && <Activity />}

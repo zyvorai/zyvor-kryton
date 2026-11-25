@@ -32,6 +32,7 @@ import (
 	"github.com/zyvorai/kryton/internal/kubeapi"
 	"github.com/zyvorai/kryton/internal/metrics"
 	"github.com/zyvorai/kryton/internal/model"
+	"github.com/zyvorai/kryton/internal/protect"
 	"github.com/zyvorai/kryton/internal/provider"
 	"github.com/zyvorai/kryton/internal/quota"
 	"github.com/zyvorai/kryton/internal/schedule"
@@ -88,6 +89,10 @@ type Config struct {
 	Quotas    *quota.Store
 	Webhooks  *webhooks.Manager
 	Schedules *schedule.Store
+	// Protections holds per-machine delete protection.
+	Protections *protect.Store
+	// ScheduleRunner serves "run this schedule now".
+	ScheduleRunner *schedule.Runner
 	// MetricsToken is a dedicated bearer token for /metrics; MetricsPublic
 	// leaves /metrics unauthenticated even when API auth is on.
 	MetricsToken  string
@@ -138,6 +143,8 @@ type Server struct {
 	quotas             *quota.Store
 	webhooks           *webhooks.Manager
 	schedules          *schedule.Store
+	protections        *protect.Store
+	runner             *schedule.Runner
 	metricsToken       string
 	metricsPublic      bool
 	defaultTTL         int
@@ -178,6 +185,7 @@ type APIError struct {
 func New(cfg Config) *Server {
 	s := &Server{
 		audit: cfg.Audit, quotas: cfg.Quotas, webhooks: cfg.Webhooks, schedules: cfg.Schedules,
+		protections: cfg.Protections, runner: cfg.ScheduleRunner,
 		metricsToken: cfg.MetricsToken, metricsPublic: cfg.MetricsPublic, defaultTTL: cfg.DefaultTTLMinutes,
 		p: cfg.Provider, catalog: cfg.Catalog, events: cfg.Events, auth: cfg.Auth, metrics: cfg.Metrics, web: cfg.Web,
 		projects: cfg.Projects, defaultProject: cfg.DefaultProject, authMode: cfg.AuthMode,
@@ -256,6 +264,8 @@ func (s *Server) Handler() http.Handler {
 	apiMux.HandleFunc("POST /api/v1/machines/{id}/snapshots/{sid}/restore", s.restoreSnapshot)
 	apiMux.HandleFunc("DELETE /api/v1/machines/{id}/snapshots/{sid}", s.deleteSnapshot)
 	apiMux.HandleFunc("PUT /api/v1/machines/{id}/ttl", s.setMachineTTL)
+	apiMux.HandleFunc("PUT /api/v1/machines/{id}/protection", s.setMachineProtection)
+	apiMux.HandleFunc("GET /api/v1/snapshots", s.listProjectSnapshots)
 	apiMux.HandleFunc("GET /api/v1/audit", s.listAudit)
 	apiMux.HandleFunc("GET /api/v1/webhooks", s.listWebhooks)
 	apiMux.HandleFunc("POST /api/v1/webhooks", s.createWebhook)
@@ -272,6 +282,7 @@ func (s *Server) Handler() http.Handler {
 	apiMux.HandleFunc("GET /api/v1/schedules/{id}", s.getSchedule)
 	apiMux.HandleFunc("PUT /api/v1/schedules/{id}", s.updateSchedule)
 	apiMux.HandleFunc("DELETE /api/v1/schedules/{id}", s.deleteSchedule)
+	apiMux.HandleFunc("POST /api/v1/schedules/{id}/run", s.runSchedule)
 	apiMux.HandleFunc("GET /api/v1/quotas", s.listQuotas)
 	apiMux.HandleFunc("GET /api/v1/quotas/{project}", s.getQuota)
 	apiMux.HandleFunc("PUT /api/v1/quotas/{project}", s.putQuota)
@@ -410,6 +421,7 @@ func (s *Server) listMachines(w http.ResponseWriter, r *http.Request) {
 	for i := range ms {
 		s.applyExpiry(&ms[i])
 		ac.annotate(&ms[i])
+		s.applyProtection(&ms[i])
 	}
 	page, next, err := paginateMachines(ms, limit, r.URL.Query().Get("cursor"))
 	if err != nil {
@@ -469,6 +481,7 @@ func (s *Server) getMachine(w http.ResponseWriter, r *http.Request) {
 	}
 	s.applyExpiry(m)
 	s.actionContext(r.Context()).annotate(m)
+	s.applyProtection(m)
 	jsonResponse(w, http.StatusOK, m)
 }
 
@@ -648,6 +661,13 @@ func (s *Server) deleteOne(r *http.Request, project, machineID string) (string, 
 	m, err := s.p.Get(r.Context(), project, machineID)
 	if err != nil {
 		return "", err
+	}
+	if s.protections != nil {
+		release, err := s.protections.BeginDelete(project, machineID)
+		if err != nil {
+			return m.Spec.Name, err
+		}
+		defer release()
 	}
 	if err := s.p.Delete(r.Context(), project, machineID); err != nil {
 		return "", err

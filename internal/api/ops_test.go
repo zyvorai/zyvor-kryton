@@ -24,6 +24,8 @@ import (
 	"github.com/zyvorai/kryton/internal/demo"
 	"github.com/zyvorai/kryton/internal/events"
 	"github.com/zyvorai/kryton/internal/metrics"
+	"github.com/zyvorai/kryton/internal/protect"
+	"github.com/zyvorai/kryton/internal/provider"
 	"github.com/zyvorai/kryton/internal/quota"
 	"github.com/zyvorai/kryton/internal/schedule"
 	"github.com/zyvorai/kryton/internal/webhooks"
@@ -36,6 +38,8 @@ type opsOpts struct {
 	metricsToken  string
 	metricsPublic bool
 	defaultTTL    int
+	// wrap, when set, decorates the demo provider (fault injection).
+	wrap func(provider.Provider) provider.Provider
 }
 
 type opsEnv struct {
@@ -86,12 +90,18 @@ func opsServer(t *testing.T, o opsOpts) opsEnv {
 	g, _ := webhooks.NewGuard(nil)
 	hooks, _ := webhooks.NewManager(webhooks.Config{Guard: g})
 	bus.AddSink(hooks.Dispatch)
+	ps, _ := protect.NewStore("")
+	var prov provider.Provider = demo.New()
+	if o.wrap != nil {
+		prov = o.wrap(prov)
+	}
 	var web fs.FS = fstest.MapFS{"index.html": {Data: []byte("ok")}}
 	s := New(Config{
-		Provider: demo.New(), Catalog: cat, Events: bus, Auth: a, Metrics: metrics.New(), Web: web,
+		Provider: prov, Catalog: cat, Events: bus, Auth: a, Metrics: metrics.New(), Web: web,
 		Projects: []string{"default", "lab"}, DefaultProject: "default", AuthMode: mode, Log: log,
-		Audit: au, Quotas: qs, Schedules: ss, Webhooks: hooks,
-		MetricsToken: o.metricsToken, MetricsPublic: o.metricsPublic, DefaultTTLMinutes: o.defaultTTL, RateLimitRPS: o.rps,
+		Audit: au, Quotas: qs, Schedules: ss, Webhooks: hooks, Protections: ps,
+		ScheduleRunner: &schedule.Runner{Store: ss, Provider: prov, Events: bus, Audit: au, Log: log},
+		MetricsToken:   o.metricsToken, MetricsPublic: o.metricsPublic, DefaultTTLMinutes: o.defaultTTL, RateLimitRPS: o.rps,
 	})
 	return opsEnv{h: s.Handler(), srv: s, audit: au, hooks: hooks}
 }

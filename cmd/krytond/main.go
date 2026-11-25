@@ -40,6 +40,7 @@ import (
 	"github.com/zyvorai/kryton/internal/kubevirt"
 	"github.com/zyvorai/kryton/internal/libvirt"
 	"github.com/zyvorai/kryton/internal/metrics"
+	"github.com/zyvorai/kryton/internal/protect"
 	"github.com/zyvorai/kryton/internal/provider"
 	"github.com/zyvorai/kryton/internal/quota"
 	"github.com/zyvorai/kryton/internal/reconciler"
@@ -193,6 +194,11 @@ func main() {
 		log.Error("schedule store failed", "error", err)
 		os.Exit(2)
 	}
+	protectionStore, err := protect.NewStore(stateFile(cfg.ProtectionsFile, "protections.json"))
+	if err != nil {
+		log.Error("protection store failed", "error", err)
+		os.Exit(2)
+	}
 	guard, err := webhooks.NewGuard(cfg.WebhookAllowHosts)
 	if err != nil {
 		log.Error("webhook allowlist invalid", "error", err)
@@ -238,6 +244,12 @@ func main() {
 			})
 		}
 	}
+	scheduleRunner := &schedule.Runner{
+		Store: scheduleStore, Provider: p, Events: bus, Audit: auditStore, Log: log,
+		OnRun: func(action, outcome string) {
+			m.Inc("kryton_scheduled_actions_total", "Scheduled power actions by action and outcome.", map[string]string{"action": action, "outcome": outcome})
+		},
+	}
 	h := api.New(api.Config{
 		Provider: p, Catalog: cat, Events: bus, Auth: authn, Metrics: m, Web: web,
 		Projects: cfg.Projects, DefaultProject: effectiveDefault, AuthMode: cfg.AuthMode,
@@ -260,6 +272,7 @@ func main() {
 			Golden: goldenMgr, ProjectRoot: projectRoot,
 		},
 		Audit: auditStore, Quotas: quotaStore, Webhooks: hooks, Schedules: scheduleStore,
+		Protections: protectionStore, ScheduleRunner: scheduleRunner,
 		MetricsToken: cfg.MetricsToken, MetricsPublic: cfg.MetricsPublic, DefaultTTLMinutes: cfg.DefaultTTLMinutes,
 		Log: log,
 	}).Handler()
@@ -269,17 +282,12 @@ func main() {
 	defer cancel()
 	go reconciler.TTL{
 		Provider: p, Projects: cfg.Projects, Events: bus, Log: log, Interval: cfg.ReconcileInterval,
-		Overrides: scheduleStore, Audit: auditStore, WarnBefore: cfg.TTLWarn,
+		Overrides: scheduleStore, Guard: protectionStore, Audit: auditStore, WarnBefore: cfg.TTLWarn,
 		OnExpire: func(project string) {
 			m.Inc("kryton_ttl_expirations_total", "Machines deleted by TTL expiry.", map[string]string{"project": project})
 		},
 	}.Run(ctx)
-	go (&schedule.Runner{
-		Store: scheduleStore, Provider: p, Events: bus, Audit: auditStore, Log: log,
-		OnRun: func(action, outcome string) {
-			m.Inc("kryton_scheduled_actions_total", "Scheduled power actions by action and outcome.", map[string]string{"action": action, "outcome": outcome})
-		},
-	}).Run(ctx)
+	go scheduleRunner.Run(ctx)
 	go hooks.Start(ctx)
 	if dp, ok := p.(*dockur.Provider); ok {
 		// Guest job submission/completion become CloudEvents even when nobody polls.

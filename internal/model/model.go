@@ -162,10 +162,20 @@ type Machine struct {
 	// current state (start, stop, restart, snapshot, delete). It is derived
 	// by the API layer on GET responses and is advisory, not a lock.
 	AllowedActions []string `json:"allowedActions,omitempty"`
+	// Protection is set on GET responses when the machine is delete
+	// protected; it is held by the API layer, not by the provider.
+	Protection *MachineProtection `json:"protection,omitempty"`
 	// GeneratedPassword is set only on the Create response, and only when
 	// the caller supplied no dockur password. It is never stored or
 	// returned again.
 	GeneratedPassword string `json:"generatedPassword,omitempty"`
+}
+
+// MachineProtection describes why a machine cannot be deleted.
+type MachineProtection struct {
+	Reason string    `json:"reason,omitempty"`
+	SetBy  string    `json:"setBy,omitempty"`
+	SetAt  time.Time `json:"setAt"`
 }
 
 // Snapshot is a point-in-time disk capture of a Machine.

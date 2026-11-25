@@ -37,11 +37,17 @@ func init() {
 		"/api/v1/machines/{id}/snapshot", "/api/v1/machines/{id}/snapshots", "/api/v1/machines/{id}/snapshots/{sid}",
 		"/api/v1/machines/{id}/snapshots/{sid}/restore", "/api/v1/machines/{id}/console-ticket",
 		"/api/v1/machines/{id}/vnc", "/api/v1/machines/{id}/console", "/api/v1/machines/{id}/ttl",
+		"/api/v1/machines/actions", "/api/v1/machines/{id}/protection", "/api/v1/snapshots",
+		"/api/v1/machines/{id}/restart", "/api/v1/machines/{id}/ready", "/api/v1/machines/{id}/logs",
+		"/api/v1/machines/{id}/shared", "/api/v1/machines/{id}/shared/{path}",
+		"/api/v1/machines/{id}/jobs", "/api/v1/machines/{id}/jobs/{jid}",
+		"/api/v1/machines/{id}/jobs/{jid}/cancel", "/api/v1/machines/{id}/jobs/{jid}/logs",
+		"/api/v1/machines/{id}/jobs/{jid}/artifacts", "/api/v1/machines/{id}/jobs/{jid}/artifacts/{path}",
 		"/api/v1/events", "/api/v1/events/stream", "/api/v1/audit",
 		"/api/v1/webhooks", "/api/v1/webhooks/deliveries", "/api/v1/webhooks/dead-letters",
 		"/api/v1/webhooks/deliveries/{id}", "/api/v1/webhooks/deliveries/{id}/redeliver",
 		"/api/v1/webhooks/{id}", "/api/v1/webhooks/{id}/test",
-		"/api/v1/schedules", "/api/v1/schedules/{id}",
+		"/api/v1/schedules", "/api/v1/schedules/{id}", "/api/v1/schedules/{id}/run",
 		"/api/v1/quotas", "/api/v1/quotas/{project}",
 	} {
 		routeTemplates = append(routeTemplates, strings.Split(strings.Trim(t, "/"), "/"))
@@ -60,6 +66,13 @@ func routeLabel(path string) string {
 	segs := strings.Split(strings.Trim(path, "/"), "/")
 	if len(segs) > 5 && segs[2] == "machines" && segs[4] == "console" {
 		return "/api/v1/machines/{id}/console/*"
+	}
+	// A trailing {path} segment spans slashes: fold the nested file path.
+	if len(segs) > 6 && segs[2] == "machines" && segs[4] == "shared" {
+		segs = append(segs[:5:5], "{path}")
+	}
+	if len(segs) > 8 && segs[2] == "machines" && segs[4] == "jobs" && segs[6] == "artifacts" {
+		segs = append(segs[:7:7], "{path}")
 	}
 	best, bestLit := "", -1
 	for _, t := range routeTemplates {
@@ -112,6 +125,9 @@ var auditActions = map[string]string{
 	"POST /api/v1/schedules":                             "schedule.create",
 	"PUT /api/v1/schedules/{id}":                         "schedule.update",
 	"DELETE /api/v1/schedules/{id}":                      "schedule.delete",
+	"POST /api/v1/schedules/{id}/run":                    "schedule.run.manual",
+	"POST /api/v1/machines/actions":                      "machine.bulk",
+	"PUT /api/v1/machines/{id}/protection":               "machine.protection.update",
 	"PUT /api/v1/quotas/{project}":                       "quota.update",
 	"DELETE /api/v1/quotas/{project}":                    "quota.delete",
 }

@@ -450,3 +450,19 @@
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 560px) { .guest-form .row { grid-template-columns: 1fr; } }
 .upload-row label:focus-within { outline: 2px solid var(--apple-blue); outline-offset: 2px; }
+
+/* —— Fleet: queries, bulk actions, schedules —— */
+.inline-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 0 0 16px; }
+.inline-form .field { flex: 1 1 180px; }
+.inline-form > .hint-warn, .inline-form > .bulk-row { flex: 1 1 100%; }
+.state-checks { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 4px 16px; border: 0; padding: 0; margin: 0; }
+.state-checks legend { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.bulk-bar { margin: 16px 0; }
+.bulk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bulk-results ul { list-style: none; margin: 8px 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.bulk-results li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-top: 1px solid var(--hairline-1); font-size: 13px; }
+.bulk-failed { color: var(--danger); }
+.bulk-warning { font-size: 13px; color: var(--danger); }
+.bulk-name { max-width: 280px; }
+.table-wrap th.cell-check, .table-wrap td.cell-check { width: 1%; padding-right: 0; }
+.protection-note { font-size: 14px; color: var(--text-secondary); margin: 0 0 12px; }
