@@ -370,7 +370,8 @@ paths:
         The machine includes `allowedActions`, the lifecycle actions it accepts in its
         current state (`start`, `stop`, `restart`, `snapshot`, `delete`); `restart` and
         `snapshot` only appear when the provider supports them. It is advisory: the
-        provider still validates each call. The same field is on list responses.
+        provider still validates each call. The same field is on list responses, as is
+        `protection` (see `PUT /machines/{id}/protection`) on protected machines.
       responses:
         '200': {description: Machine}
         '404': {description: Not found}
@@ -378,6 +379,7 @@ paths:
       tags: [machines]
       responses:
         '204': {description: Deleted}
+        '409': {description: 'The machine is delete protected (MACHINE_PROTECTED)'}
   /api/v1/machines/{id}/start:
     post:
       tags: [machines]
@@ -688,6 +690,95 @@ paths:
         '400': {description: Invalid ttlMinutes}
         '403': {description: Requires operator on the project}
         '404': {description: Machine not found}
+  /api/v1/machines/{id}/protection:
+    parameters:
+      - $ref: '#/components/parameters/MachineID'
+      - $ref: '#/components/parameters/Project'
+    put:
+      tags: [machines]
+      summary: Set or remove delete protection (operator)
+      description: |
+        A protected machine cannot be deleted: `DELETE`, bulk delete (also in a dry
+        run) and TTL expiry refuse it with `MACHINE_PROTECTED` until the protection
+        is removed. Start, stop, restart and snapshot operations are unaffected.
+        Machine responses carry `protection` and drop `delete` from `allowedActions`.
+        It is a guard against accidents: any operator of the project can remove it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [protected]
+              additionalProperties: false
+              properties:
+                protected: {type: boolean}
+                reason: {type: string, maxLength: 256, description: Only with protected true}
+      responses:
+        '200':
+          description: Current protection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: {type: string}
+                  machineId: {type: string}
+                  protected: {type: boolean}
+                  protection: {$ref: '#/components/schemas/MachineProtection'}
+        '400': {description: Missing protected, or an invalid reason}
+        '403': {description: Requires operator on the project}
+        '404': {description: Machine not found}
+        '409': {description: The machine is already being deleted}
+        '501': {description: Delete protection is not configured}
+  /api/v1/snapshots:
+    get:
+      tags: [machines]
+      summary: Snapshots across a project's machines (viewer)
+      description: |
+        Oldest first. Reads each matching machine's snapshots, so at most 500
+        machines may match. A machine whose snapshots cannot be read is listed in
+        `errors` and the rest are still returned.
+      parameters:
+        - $ref: '#/components/parameters/Project'
+        - {in: query, name: selector, schema: {type: string}, description: Label selector choosing the machines}
+        - {in: query, name: olderThan, schema: {type: string, example: 30d}, description: 'Only snapshots older than this: a duration such as 36h, or days such as 30d (max 3650d)'}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        '200':
+          description: Snapshot inventory
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: {type: string}
+                  total: {type: integer, description: Matches before limit}
+                  machines: {type: integer}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        project: {type: string}
+                        machineId: {type: string}
+                        machineName: {type: string}
+                        name: {type: string}
+                        state: {type: string}
+                        message: {type: string}
+                        createdAt: {type: string, format: date-time}
+                        scheduleId: {type: string, description: The schedule whose retention manages it}
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        machineId: {type: string}
+                        error: {type: object, properties: {code: {type: string}, message: {type: string}}}
+        '400': {description: Invalid filter, or more than 500 machines match}
+        '403': {description: Requires viewer on the project}
+        '501': {description: The provider does not support snapshots}
   /api/v1/audit:
     get:
       tags: [audit]
@@ -927,6 +1018,8 @@ paths:
                 cron: {type: string, example: '0 19 * * mon-fri'}
                 timezone: {type: string, example: Europe/Berlin}
                 snapshotName: {type: string, maxLength: 63}
+                retain: {type: integer, minimum: 0, maximum: 100, default: 0, description: 'snapshot only: keep this many ready snapshots taken by the schedule; 0 keeps all'}
+                maxFailures: {type: integer, minimum: 0, maximum: 100, default: 0, description: Disable after this many consecutive failed runs; 0 never}
       responses:
         '201':
           description: Created
@@ -965,7 +1058,9 @@ paths:
                 cron: {type: string}
                 timezone: {type: string}
                 snapshotName: {type: string}
-                enabled: {type: boolean}
+                enabled: {type: boolean, description: true also resets the consecutive failure count}
+                retain: {type: integer, minimum: 0, maximum: 100}
+                maxFailures: {type: integer, minimum: 0, maximum: 100}
       responses:
         '200': {description: Updated}
         '400': {description: Invalid cron or timezone}
@@ -976,6 +1071,25 @@ paths:
       responses:
         '204': {description: Deleted}
         '404': {description: Not found}
+  /api/v1/schedules/{id}/run:
+    parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+    post:
+      tags: [schedules]
+      summary: Run a schedule's action now (operator)
+      description: |
+        Executes the action immediately, also when the schedule is disabled, and
+        applies its retention. The next scheduled slot is unchanged and a failure
+        does not count towards `maxFailures`.
+      responses:
+        '200':
+          description: The action succeeded; the schedule with its run result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Schedule'}
+        '404': {description: Schedule or machine not found}
+        '409': {description: 'Already running (SCHEDULE_BUSY), or the action was refused'}
+        '501': {description: The provider does not support the action, or scheduling is not configured}
   /api/v1/quotas:
     get:
       tags: [quotas]
@@ -1222,6 +1336,17 @@ components:
         lastResult: {type: string, enum: [success, error, skipped]}
         lastError: {type: string}
         runCount: {type: integer}
+        retain: {type: integer}
+        snapshotIds: {type: array, items: {type: string}, description: Snapshots managed by retention, oldest first}
+        maxFailures: {type: integer}
+        consecutiveFailures: {type: integer}
+        disabledReason: {type: string}
+    MachineProtection:
+      type: object
+      properties:
+        reason: {type: string}
+        setBy: {type: string}
+        setAt: {type: string, format: date-time}
     QuotaLimits:
       type: object
       additionalProperties: false

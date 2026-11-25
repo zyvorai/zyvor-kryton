@@ -32,6 +32,15 @@ const (
 // MaxPerProject caps schedules per project.
 const MaxPerProject = 100
 
+// MaxRetain and MaxFailureLimit bound the retention and failure settings.
+const (
+	MaxRetain       = 100
+	MaxFailureLimit = 100
+	// maxTracked bounds the snapshot IDs remembered per schedule, for
+	// snapshots that never become ready.
+	maxTracked = 200
+)
+
 // ErrNotFound is returned for unknown schedule ids.
 var ErrNotFound = errors.New("schedule not found")
 
@@ -65,6 +74,36 @@ type Schedule struct {
 	LastResult   string     `json:"lastResult,omitempty"` // success | error | skipped
 	LastError    string     `json:"lastError,omitempty"`
 	RunCount     int        `json:"runCount"`
+	// Retain, for snapshot schedules, keeps this many ready snapshots taken
+	// by the schedule and deletes its older ones; 0 keeps everything.
+	Retain int `json:"retain,omitempty"`
+	// SnapshotIDs are the snapshots this schedule took while Retain was set,
+	// oldest first. Only these are ever deleted by retention.
+	SnapshotIDs []string `json:"snapshotIds,omitempty"`
+	// MaxFailures disables the schedule after this many consecutive failed
+	// runs; 0 never disables it.
+	MaxFailures         int    `json:"maxFailures,omitempty"`
+	ConsecutiveFailures int    `json:"consecutiveFailures,omitempty"`
+	DisabledReason      string `json:"disabledReason,omitempty"`
+}
+
+func (sc Schedule) clone() Schedule {
+	sc.SnapshotIDs = append([]string(nil), sc.SnapshotIDs...)
+	return sc
+}
+
+// validatePolicy checks retention and failure settings against the action.
+func (sc Schedule) validatePolicy() error {
+	if sc.Retain < 0 || sc.Retain > MaxRetain {
+		return errors.New("retain must be between 0 (keep all) and 100")
+	}
+	if sc.Retain > 0 && sc.Action != ActionSnapshot {
+		return errors.New("retain only applies to the snapshot action")
+	}
+	if sc.MaxFailures < 0 || sc.MaxFailures > MaxFailureLimit {
+		return errors.New("maxFailures must be between 0 (never disable) and 100")
+	}
+	return nil
 }
 
 // Expiry overrides a machine's provider-side TTL. A nil ExpiresAt means
@@ -178,9 +217,14 @@ func (s *Store) Create(sc Schedule) (Schedule, error) {
 	if len(sc.SnapshotName) > 63 {
 		return Schedule{}, errors.New("snapshotName must be at most 63 characters")
 	}
+	if err := sc.validatePolicy(); err != nil {
+		return Schedule{}, err
+	}
 	if sc.Timezone == "" {
 		sc.Timezone = "UTC"
 	}
+	// Run history is managed by the store, never taken from the caller.
+	sc.SnapshotIDs, sc.ConsecutiveFailures, sc.DisabledReason = nil, 0, ""
 	now := s.now()
 	next, err := compute(sc.Cron, sc.Timezone, now)
 	if err != nil {
@@ -213,6 +257,8 @@ type Patch struct {
 	Timezone     *string
 	SnapshotName *string
 	Enabled      *bool
+	Retain       *int
+	MaxFailures  *int
 }
 
 // Update applies p and recomputes the next run.
@@ -244,6 +290,19 @@ func (s *Store) Update(sid string, p Patch) (Schedule, error) {
 	}
 	if p.Enabled != nil {
 		next.Enabled = *p.Enabled
+		if next.Enabled {
+			// Resuming starts the failure count again.
+			next.ConsecutiveFailures, next.DisabledReason = 0, ""
+		}
+	}
+	if p.Retain != nil {
+		next.Retain = *p.Retain
+	}
+	if p.MaxFailures != nil {
+		next.MaxFailures = *p.MaxFailures
+	}
+	if err := next.validatePolicy(); err != nil {
+		return Schedule{}, err
 	}
 	n, err := compute(next.Cron, next.Timezone, s.now())
 	if err != nil {
@@ -257,7 +316,7 @@ func (s *Store) Update(sid string, p Patch) (Schedule, error) {
 		*cur = old
 		return Schedule{}, err
 	}
-	return next, nil
+	return next.clone(), nil
 }
 
 // Delete removes a schedule.
@@ -284,7 +343,7 @@ func (s *Store) Get(sid string) (Schedule, error) {
 	if !ok {
 		return Schedule{}, ErrNotFound
 	}
-	return *sc, nil
+	return sc.clone(), nil
 }
 
 // List returns schedules oldest first, optionally narrowed by project,
@@ -295,7 +354,7 @@ func (s *Store) List(project, machineID string, visible func(string) bool) []Sch
 	out := []Schedule{}
 	for _, sc := range s.items {
 		if (project == "" || sc.Project == project) && (machineID == "" || sc.MachineID == machineID) && (visible == nil || visible(sc.Project)) {
-			out = append(out, *sc)
+			out = append(out, sc.clone())
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
@@ -309,20 +368,21 @@ func (s *Store) Due(now time.Time) []Schedule {
 	var out []Schedule
 	for _, sc := range s.items {
 		if sc.Enabled && sc.NextRunAt != nil && !sc.NextRunAt.After(now) {
-			out = append(out, *sc)
+			out = append(out, sc.clone())
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].NextRunAt.Before(*out[j].NextRunAt) })
 	return out
 }
 
-// MarkRun records an execution outcome and advances NextRunAt past now.
-func (s *Store) MarkRun(sid string, ranAt time.Time, result, errMsg string) {
+// MarkRun records an execution outcome and advances NextRunAt past now. It
+// reports whether this failure reached MaxFailures and disabled the schedule.
+func (s *Store) MarkRun(sid string, ranAt time.Time, result, errMsg string) (disabled bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sc, ok := s.items[sid]
 	if !ok {
-		return
+		return false
 	}
 	sc.LastRunAt = &ranAt
 	sc.LastResult, sc.LastError = result, errMsg
@@ -334,7 +394,79 @@ func (s *Store) MarkRun(sid string, ranAt time.Time, result, errMsg string) {
 	} else {
 		sc.NextRunAt, sc.Enabled = nil, false
 	}
+	switch result {
+	case "success":
+		sc.ConsecutiveFailures = 0
+	case "error":
+		sc.ConsecutiveFailures++
+		if sc.Enabled && sc.MaxFailures > 0 && sc.ConsecutiveFailures >= sc.MaxFailures {
+			sc.Enabled, disabled = false, true
+			sc.DisabledReason = fmt.Sprintf("disabled after %d consecutive failed runs", sc.ConsecutiveFailures)
+		}
+	}
 	_ = s.saveLocked()
+	return disabled
+}
+
+// MarkManualRun records an on-demand run: the next scheduled slot is left
+// alone and a failure does not count towards MaxFailures.
+func (s *Store) MarkManualRun(sid string, ranAt time.Time, result, errMsg string) (Schedule, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sc, ok := s.items[sid]
+	if !ok {
+		return Schedule{}, ErrNotFound
+	}
+	sc.LastRunAt = &ranAt
+	sc.LastResult, sc.LastError = result, errMsg
+	sc.RunCount++
+	if result == "success" {
+		sc.ConsecutiveFailures = 0
+	}
+	if err := s.saveLocked(); err != nil {
+		return Schedule{}, err
+	}
+	return sc.clone(), nil
+}
+
+// TrackSnapshot remembers a snapshot the schedule took, for retention.
+func (s *Store) TrackSnapshot(sid, snapshotID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sc, ok := s.items[sid]
+	if !ok {
+		return ErrNotFound
+	}
+	sc.SnapshotIDs = append(sc.SnapshotIDs, snapshotID)
+	if n := len(sc.SnapshotIDs); n > maxTracked {
+		sc.SnapshotIDs = append([]string(nil), sc.SnapshotIDs[n-maxTracked:]...)
+	}
+	return s.saveLocked()
+}
+
+// UntrackSnapshots forgets snapshot IDs (deleted, or already gone).
+func (s *Store) UntrackSnapshots(sid string, ids ...string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sc, ok := s.items[sid]
+	if !ok {
+		return ErrNotFound
+	}
+	drop := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		drop[id] = true
+	}
+	var keep []string
+	for _, id := range sc.SnapshotIDs {
+		if !drop[id] {
+			keep = append(keep, id)
+		}
+	}
+	sc.SnapshotIDs = keep
+	return s.saveLocked()
 }
 
 // ForgetMachine deletes every schedule and expiry override for a machine

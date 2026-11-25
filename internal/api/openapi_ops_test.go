@@ -34,7 +34,7 @@ func TestOpenAPICoversOperationsEndpoints(t *testing.T) {
 			t.Errorf("openapi.yaml path %s has no %s operation", ep.Path, ep.Method)
 		}
 	}
-	for _, schema := range []string{"AuditEntry", "WebhookSubscription", "WebhookDelivery", "Schedule", "QuotaLimits", "ProjectQuota"} {
+	for _, schema := range []string{"AuditEntry", "WebhookSubscription", "WebhookDelivery", "Schedule", "QuotaLimits", "ProjectQuota", "MachineProtection"} {
 		if !strings.Contains(spec, "\n    "+schema+":\n") {
 			t.Errorf("openapi.yaml is missing schema %s", schema)
 		}

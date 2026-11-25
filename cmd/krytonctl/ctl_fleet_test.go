@@ -88,3 +88,52 @@ func TestFleetV2Commands(t *testing.T) {
 		t.Errorf("snapshot body = %v", b)
 	}
 }
+
+func TestFleetV3Commands(t *testing.T) {
+	c, got := capture(t)
+	protectCommand(c, "protect", []string{"m1", "--reason", "prod db"})
+	protectCommand(c, "unprotect", []string{"--project", "ops", "m1"})
+	snapshotReportCommand(c, []string{"--older-than", "30d", "--selector", "env=ci", "--limit", "10"})
+	schedulesCommand(c, []string{"create", "m1", "--action", "snapshot", "--cron", "@daily", "--retain", "7", "--max-failures", "3"})
+	schedulesCommand(c, []string{"create", "m1", "--action", "stop", "--cron", "@daily"})
+	schedulesCommand(c, []string{"update", "s1", "--retain", "0"})
+	schedulesCommand(c, []string{"update", "s1", "--cron", "@hourly"})
+	schedulesCommand(c, []string{"run", "s1"})
+
+	want := []struct{ method, path, rawQuery string }{
+		{"PUT", "/api/v1/machines/m1/protection", "project=lab"},
+		{"PUT", "/api/v1/machines/m1/protection", "project=ops"},
+		{"GET", "/api/v1/snapshots", "limit=10&olderThan=30d&project=lab&selector=env%3Dci"},
+		{"POST", "/api/v1/schedules", ""},
+		{"POST", "/api/v1/schedules", ""},
+		{"PUT", "/api/v1/schedules/s1", ""},
+		{"PUT", "/api/v1/schedules/s1", ""},
+		{"POST", "/api/v1/schedules/s1/run", ""},
+	}
+	if len(*got) != len(want) {
+		t.Fatalf("requests=%d want %d: %+v", len(*got), len(want), *got)
+	}
+	for i, w := range want {
+		g := (*got)[i]
+		if g.Method != w.method || g.Path != w.path || g.RawQuery != w.rawQuery {
+			t.Errorf("request %d = %s %s ?%s, want %s %s ?%s", i, g.Method, g.Path, g.RawQuery, w.method, w.path, w.rawQuery)
+		}
+	}
+	bodies := []map[string]any{
+		0: {"protected": true, "reason": "prod db"},
+		1: {"protected": false},
+		5: {"retain": float64(0)},
+		6: {"cron": "@hourly"},
+	}
+	for i, w := range bodies {
+		if w != nil && !reflect.DeepEqual((*got)[i].Body, w) {
+			t.Errorf("body %d = %v, want %v", i, (*got)[i].Body, w)
+		}
+	}
+	if b := (*got)[3].Body; b["retain"] != float64(7) || b["maxFailures"] != float64(3) {
+		t.Errorf("create body = %v", b)
+	}
+	if b := (*got)[4].Body; b["retain"] != nil || b["maxFailures"] != nil {
+		t.Errorf("omitted policy flags were sent: %v", b)
+	}
+}

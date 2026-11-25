@@ -61,6 +61,10 @@ func main() {
 	switch os.Args[1] {
 	case "list":
 		listCommand(c, os.Args[2:])
+	case "protect", "unprotect":
+		protectCommand(c, os.Args[1], os.Args[2:])
+	case "snapshot-report":
+		snapshotReportCommand(c, os.Args[2:])
 	case "bulk":
 		bulkCommand(c, os.Args[2:])
 	case "summary":
@@ -148,7 +152,7 @@ func createCommand(c client, args []string) {
 	dAudio := f.Bool("dockur-audio", false, "enable web viewer audio (AUDIO=Y)")
 	dSecureBoot := f.Bool("dockur-secure-boot", false, "enable secure boot + TPM")
 	dNoAutologin := f.Bool("dockur-no-autologin", false, "disable dockur autologin (AUTOLOGIN=N)")
-	_ = f.Parse(args)
+	parseFlags(f, args, 0)
 	if f.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "create requires NAME")
 		os.Exit(2)
@@ -257,7 +261,7 @@ func machineCommand(c client, cmd string, args []string) {
 	f := flag.NewFlagSet(cmd, flag.ExitOnError)
 	project := f.String("project", c.project, "project")
 	name := f.String("name", "", "snapshot name")
-	_ = f.Parse(args)
+	parseFlags(f, args, 0)
 	if f.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "%s requires MACHINE_ID\n", cmd)
 		os.Exit(2)
@@ -363,6 +367,9 @@ func usage() {
   stop MACHINE_ID
   bulk start|stop|snapshot|delete (--selector EXPR | MACHINE_ID...) [--dry-run] [--confirm] [--snapshot-name N]
                                                    up to 100 machines, per-machine results; delete needs --confirm or --dry-run
+  protect MACHINE_ID [--reason TEXT]               block delete, bulk delete and TTL expiry
+  unprotect MACHINE_ID
+  snapshot-report [--older-than 30d] [--selector EXPR] [--limit N]   snapshots across the project, oldest first
   events [--type T[,T]] [--machine ID] [--since RFC3339] [--limit N]
   snapshot MACHINE_ID [--name NAME]
   snapshots MACHINE_ID
@@ -372,7 +379,9 @@ func usage() {
   ttl MACHINE_ID MINUTES [--project P]      (0 = never expire)
   schedules list [--machine ID]
   schedules create MACHINE_ID --action start|stop|restart|snapshot --cron "0 19 * * mon-fri" [--tz Europe/Berlin] [--snapshot-name N]
-  schedules get|enable|disable|delete SCHEDULE_ID
+                   [--retain N] [--max-failures N]
+  schedules update SCHEDULE_ID [--cron C --tz Z --action A --snapshot-name N --retain N --max-failures N]
+  schedules get|run|enable|disable|delete SCHEDULE_ID
   quota list | get PROJECT | clear PROJECT
   quota set PROJECT [--machines N --vcpu N --memory MiB --disk GiB]   (0 = unlimited)
   webhooks list | get ID | delete ID | test ID

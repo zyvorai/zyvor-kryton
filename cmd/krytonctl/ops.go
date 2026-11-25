@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zyvorai/kryton/internal/auth"
 )
@@ -73,7 +74,7 @@ func webhooksCommand(c client, args []string) {
 	cursor := f.String("cursor", "", "deliveries: page cursor")
 	enabled := f.String("enabled", "", "update: true | false")
 	newURL := f.String("url", "", "update: new URL")
-	_ = f.Parse(reorderFlags(rest))
+	parseFlags(f, rest, 0)
 	need := func(n int, what string) {
 		if f.NArg() < n {
 			usageExit("webhooks " + sub + " requires " + what)
@@ -128,7 +129,7 @@ func webhooksCommand(c client, args []string) {
 
 func schedulesCommand(c client, args []string) {
 	if len(args) == 0 {
-		usageExit("schedules requires a subcommand: list | create | get | enable | disable | delete")
+		usageExit("schedules requires a subcommand: list | create | get | update | run | enable | disable | delete")
 	}
 	sub, rest := args[0], args[1:]
 	f := flag.NewFlagSet("schedules "+sub, flag.ExitOnError)
@@ -138,16 +139,49 @@ func schedulesCommand(c client, args []string) {
 	tz := f.String("tz", "UTC", "IANA timezone, e.g. Europe/Berlin")
 	snapName := f.String("snapshot-name", "", "name for scheduled snapshots")
 	machine := f.String("machine", "", "list: only this machine")
-	_ = f.Parse(reorderFlags(rest))
+	retain := f.Int("retain", -1, "snapshot schedules: keep this many snapshots (0 = keep all)")
+	maxFailures := f.Int("max-failures", -1, "disable after this many consecutive failures (0 = never)")
+	parseFlags(f, rest, 0)
+	// policy adds only the flags the caller gave.
+	policy := func(body map[string]any) map[string]any {
+		if *retain >= 0 {
+			body["retain"] = *retain
+		}
+		if *maxFailures >= 0 {
+			body["maxFailures"] = *maxFailures
+		}
+		return body
+	}
 	switch sub {
 	case "list":
 		c.do("GET", "/api/v1/schedules"+query("project", *project, "machineId", *machine), nil)
 	case "create":
 		if f.NArg() != 1 || *action == "" || *cron == "" {
-			usageExit(`schedules create MACHINE_ID --action stop --cron "0 19 * * mon-fri" [--tz Europe/Berlin] [--snapshot-name N]`)
+			usageExit(`schedules create MACHINE_ID --action stop --cron "0 19 * * mon-fri" [--tz Europe/Berlin] [--snapshot-name N] [--retain N] [--max-failures N]`)
 		}
-		c.do("POST", "/api/v1/schedules", map[string]any{"project": *project, "machineId": f.Arg(0), "action": *action, "cron": *cron, "timezone": *tz, "snapshotName": *snapName})
-	case "get", "delete", "enable", "disable":
+		c.do("POST", "/api/v1/schedules", policy(map[string]any{"project": *project, "machineId": f.Arg(0), "action": *action, "cron": *cron, "timezone": *tz, "snapshotName": *snapName}))
+	case "update":
+		if f.NArg() != 1 {
+			usageExit("schedules update requires SCHEDULE_ID")
+		}
+		body := map[string]any{}
+		f.Visit(func(fl *flag.Flag) {
+			switch fl.Name {
+			case "action":
+				body["action"] = *action
+			case "cron":
+				body["cron"] = *cron
+			case "tz":
+				body["timezone"] = *tz
+			case "snapshot-name":
+				body["snapshotName"] = *snapName
+			}
+		})
+		if len(policy(body)) == 0 {
+			usageExit("schedules update needs at least one of --action --cron --tz --snapshot-name --retain --max-failures")
+		}
+		c.do("PUT", "/api/v1/schedules/"+f.Arg(0), body)
+	case "get", "delete", "enable", "disable", "run":
 		if f.NArg() != 1 {
 			usageExit("schedules " + sub + " requires SCHEDULE_ID")
 		}
@@ -157,6 +191,13 @@ func schedulesCommand(c client, args []string) {
 			c.do("GET", path, nil)
 		case "delete":
 			c.do("DELETE", path, nil)
+		case "run":
+			// A restart or snapshot may take longer than the default timeout;
+			// the server gives an action two minutes.
+			slow := *c.http
+			slow.Timeout = 150 * time.Second
+			c.http = &slow
+			c.do("POST", path+"/run", nil)
 		default:
 			c.do("PUT", path, map[string]any{"enabled": sub == "enable"})
 		}
@@ -168,7 +209,7 @@ func schedulesCommand(c client, args []string) {
 func ttlCommand(c client, args []string) {
 	f := flag.NewFlagSet("ttl", flag.ExitOnError)
 	project := f.String("project", c.project, "project")
-	_ = f.Parse(reorderFlags(args))
+	parseFlags(f, args, 0)
 	if f.NArg() != 2 {
 		usageExit("ttl requires MACHINE_ID MINUTES (0 = never expire)")
 	}
@@ -189,7 +230,7 @@ func quotaCommand(c client, args []string) {
 	vcpu := f.Int("vcpu", 0, "max total vCPU (0 = unlimited)")
 	memory := f.Int("memory", 0, "max total memory MiB (0 = unlimited)")
 	disk := f.Int("disk", 0, "max total disk GiB (0 = unlimited)")
-	_ = f.Parse(reorderFlags(rest))
+	parseFlags(f, rest, 0)
 	switch sub {
 	case "list":
 		c.do("GET", "/api/v1/quotas", nil)
@@ -211,26 +252,46 @@ func quotaCommand(c client, args []string) {
 	}
 }
 
-// reorderFlags moves flags ahead of positional arguments so
-// "create URL --event x" works as well as "create --event x URL".
-func reorderFlags(args []string) []string {
+// parseFlags parses args with flags and positional arguments in any order, so
+// "create NAME --cpu 2" and "create --cpu 2 NAME" both work (the standard
+// flag package stops at the first positional). Boolean flags do not consume
+// the next argument. When verbatimAfter > 0, everything from that positional
+// onwards is passed through untouched (job-run's guest command). "--" ends
+// flag parsing.
+func parseFlags(f *flag.FlagSet, args []string, verbatimAfter int) {
 	var flags, pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if strings.HasPrefix(a, "-") && len(a) > 1 {
-			flags = append(flags, a)
-			if !strings.Contains(a, "=") && i+1 < len(args) && !isBoolFlag(a) {
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
+		if len(a) < 2 || a[0] != '-' {
+			if verbatimAfter > 0 && len(pos) == verbatimAfter-1 {
+				rest := args[i:]
+				if len(rest) > 1 && rest[1] == "--" {
+					rest = append([]string{rest[0]}, rest[2:]...)
+				}
+				pos = append(pos, rest...)
+				break
+			}
+			pos = append(pos, a)
+			continue
+		}
+		flags = append(flags, a)
+		name, _, inline := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		if inline || i+1 >= len(args) {
+			continue
+		}
+		if def := f.Lookup(name); def != nil {
+			if b, ok := def.Value.(interface{ IsBoolFlag() bool }); !ok || !b.IsBoolFlag() {
 				flags = append(flags, args[i+1])
 				i++
 			}
-			continue
 		}
-		pos = append(pos, a)
 	}
-	return append(flags, pos...)
+	_ = f.Parse(append(append(flags, "--"), pos...))
 }
-
-func isBoolFlag(string) bool { return false } // every ops flag takes a value
 
 // newKeyCommand prints a fresh token and the keys.json entry for it.
 // It runs offline: nothing is sent to the server.

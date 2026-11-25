@@ -61,6 +61,8 @@ spec:
               value: /var/lib/kryton/schedules.json
             - name: KRYTON_QUOTAS_FILE
               value: /var/lib/kryton/quotas.json
+            - name: KRYTON_PROTECTIONS_FILE
+              value: /var/lib/kryton/protections.json
             {{- if .Values.audit.file }}
             - name: KRYTON_AUDIT_FILE
               value: {{ .Values.audit.file | quote }}

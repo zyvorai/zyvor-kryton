@@ -6,8 +6,18 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ## [Unreleased]
 
+### Security
+
+- gorilla/websocket v1.5.3 -> `v1.5.4-0.20240701034025-d67f41855da4`, the fixed version for GO-2026-6278 (weak PRNG for WebSocket mask keys), which govulncheck reported as reachable and which failed CI on `main`. It pulls in `golang.org/x/net` (indirect, v0.63.0).
+
 ### Added
 
+- Delete protection: `PUT /api/v1/machines/{id}/protection` (`krytonctl protect` / `unprotect`). `DELETE`, bulk delete (including dry runs) and TTL expiry refuse a protected machine (`409 MACHINE_PROTECTED`; `io.kryton.machine.expiry.blocked`). Machines carry `protection` and drop `delete` from `allowedActions`. Stored in `KRYTON_PROTECTIONS_FILE`.
+- Snapshot retention for schedules: `retain: N` keeps the newest N ready snapshots the schedule took and never touches other snapshots; nothing is deleted until N are ready. `krytonctl schedules create|update --retain`.
+- `maxFailures` on schedules disables one after N consecutive failures (`disabledReason`, `io.kryton.schedule.disabled`); `krytonctl schedules update`, `--max-failures`.
+- Run a schedule now: `POST /api/v1/schedules/{id}/run`, `krytonctl schedules run`; the next slot is unchanged.
+- Snapshot inventory: `GET /api/v1/snapshots` across a project, oldest first, with `olderThan`, `selector` and `limit`; `krytonctl snapshot-report`.
+- Web console: server-side machine query (label selector, name, states); multi-select bulk start/stop/snapshot/delete that always previews with a dry run first; buttons driven by `allowedActions`; a Fleet page (summary by label, snapshot inventory); event filters on Activity (type, machine, history window) with a filtered live stream; delete protection and per-machine schedules (retention, run now) in the machine drawer.
 - Label selectors: `GET /api/v1/machines?selector=env=ci,tier!=db` (Kubernetes-style `=`, `==`, `!=`, `in`, `notin`, key, `!key`; capped at 1024 bytes, 16 requirements, 16 values). `krytonctl list --selector`, `krytonctl create --label k=v`, and the web console search now matches `key=value` labels. `labels` is now documented in the OpenAPI create schema.
 - `Idempotency-Key` on `POST /api/v1/machines`: a retried create returns the original `201` with `Idempotent-Replay: true` instead of a duplicate or a `409`; reuse with a different body is `422 IDEMPOTENCY_KEY_REUSED`, an in-flight retry `409 IDEMPOTENCY_IN_PROGRESS`. Keys are per caller and project, kept 24 h in memory (lost on restart), at most 10,000; a replay never repeats the one-time generated password. `krytonctl create --idempotency-key`.
 - Bulk lifecycle: `POST /api/v1/machines/actions` starts or stops up to 100 machines by `ids` or `selector` with per-machine results; `krytonctl bulk`.
@@ -21,20 +31,24 @@ For narrative release write-ups (what changed and why, aimed at operators), see 
 
 ### Fixed
 
+- `krytonctl` ignored flags written after a positional argument, so documented forms failed or were silently dropped: `create NAME --cpu 2` ("create requires NAME"), `delete ID --project p` (default project used), `restart ID --force`. A boolean flag before another flag also broke parsing (`bulk delete --dry-run --selector ...`). `job-run` still passes everything from the guest command onwards through unchanged.
+- Web console listed only the first 50 machines of a project; it now follows `nextCursor`.
+- Metrics route labels and audit actions: guest routes (`restart`, `ready`, `logs`, `shared`, `jobs`) were reported as `/api/unmatched` and `POST /machines/actions` as `/api/v1/machines/{id}`. Bulk calls are now audited as `machine.bulk`.
 - `spec.labels` had no size cap: a create request could carry thousands of labels. At most 64 are accepted now (`400 INVALID_REQUEST`).
 - OpenAPI: the create schema omitted `labels`.
 - Golden-build and storage-setup status files were rewritten in place, so a poller could read a truncated file and fail with `unexpected end of JSON input` (flaky `internal/golden` and `internal/storage` tests, and a transient error in the status endpoints). They are now written to a temp file and renamed.
 
 ### Changed
 
+- Build image digests refreshed from the registries: `golang:1.27.4` and `distroless/static-debian13:nonroot`. Linux templates CI uses kubectl v1.37.2. `@types/react` 19.3.1; `jsdom` 31.0.1 and Testing Library added for console component tests.
 - Operator console deps (`web/`): vitest 5.0.3 -> 5.1.1 and @vitejs/plugin-react 6.1.1 -> 6.3.0; embedded bundle in `cmd/krytond/web` rebuilt (typecheck, 38 tests, build pass).
 - Docs CI: Python pin `3.x` -> `3.14`; `requirements-docs.txt` floors raised to mkdocs>=1.6.1 and mkdocs-material>=9.8.2 (current PyPI releases).
 
 ### Dependency audit, held back or already current
 
-- Go modules: `go get -u ./... && go mod tidy` changed nothing; gorilla/websocket v1.5.3 and golang.org/x/time v0.16.0 are latest and neither has a newer major module path.
+- Go modules (earlier audit, superseded for websocket by the security fix above): `go get -u ./... && go mod tidy` changed nothing; gorilla/websocket v1.5.3 and golang.org/x/time v0.16.0 are latest and neither has a newer major module path.
 - Go toolchain: go.mod `go 1.27.1` stays (documented minimum; 1.27.4 is the latest release and the Docker/govulncheck pin). No 1.26.x CI matrix: the module requires 1.27, so a 1.26 leg could not build.
-- Dockerfile: golang:1.27.4 digest re-verified against Docker Hub (unchanged); distroless digest unchanged. Helm has no third-party images.
+- Dockerfile: Helm has no third-party images (image digests: see Changed).
 - GitHub Actions: all pins already at the verified majors. Unverified against sibling repos and left as is: golangci/golangci-lint-action v9 (latest v9.3.0), golang/govulncheck-action v1 (v1.1.0), aquasecurity/trivy-action v0.36.0 (latest), azure/setup-kubectl v5 (v5.2.0).
 - Node 24 pin already present in CI; local verification ran on Node 22.
 - vendored noVNC stays at 1.5.0 (bundled build needs a reviewed rebuild).

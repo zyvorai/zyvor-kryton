@@ -113,7 +113,11 @@ func guestCommand(c client, cmd string, args []string) {
 	file := f.String("file", "", "job-run: read the script from FILE")
 	var envs multiFlag
 	f.Var(&envs, "env", "job-run: KEY=VALUE (repeatable)")
-	_ = f.Parse(args)
+	verbatim := 0
+	if cmd == "job-run" {
+		verbatim = 2 // MACHINE_ID, then the guest command with its own flags
+	}
+	parseFlags(f, args, verbatim)
 	if f.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "%s requires MACHINE_ID\n", cmd)
 		os.Exit(2)

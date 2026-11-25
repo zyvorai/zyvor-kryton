@@ -383,6 +383,13 @@ func (s *Server) bulkOne(r *http.Request, req bulkActionRequest, ac actionContex
 			return err
 		}
 		res.Name, res.State = m.Spec.Name, m.State
+		if req.Action == "delete" && s.protections != nil {
+			release, perr := s.protections.BeginDelete(req.Project, res.ID)
+			if perr != nil {
+				return perr
+			}
+			release()
+		}
 		if !hasAction(ac.actionsFor(m.State), req.Action) {
 			return fmt.Errorf("%w: cannot %s a machine that is %s", provider.ErrPrecondition, req.Action, m.State)
 		}
@@ -391,8 +398,14 @@ func (s *Server) bulkOne(r *http.Request, req bulkActionRequest, ac actionContex
 	switch req.Action {
 	case "delete":
 		name, err := s.deleteOne(r, req.Project, res.ID)
-		res.Name, res.State = name, model.StateDeleting
-		return err
+		if name != "" {
+			res.Name = name
+		}
+		if err != nil {
+			return err
+		}
+		res.State = model.StateDeleting
+		return nil
 	case "snapshot":
 		snap, err := s.snapshotOne(r, req.Project, res.ID, req.SnapshotName)
 		if err != nil {

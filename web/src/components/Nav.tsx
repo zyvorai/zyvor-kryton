@@ -8,6 +8,7 @@ import Icon from './Icon';
 const LINKS: { page: Page; label: string }[] = [
   { page: 'overview', label: 'Overview' },
   { page: 'machines', label: 'Machines' },
+  { page: 'fleet', label: 'Fleet' },
   { page: 'images', label: 'Images' },
   { page: 'jobs', label: 'Jobs' },
   { page: 'activity', label: 'Activity' },

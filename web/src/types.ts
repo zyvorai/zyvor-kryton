@@ -63,6 +63,10 @@ export type Machine = {
   createdAt: string;
   updatedAt?: string;
   expiresAt?: string;
+  /** Lifecycle actions accepted now (start, stop, restart, snapshot, delete). */
+  allowedActions?: string[];
+  /** Present when the machine is delete protected. */
+  protection?: { reason?: string; setBy?: string; setAt?: string };
   /** Returned once, on create, when dockur.password was left empty. */
   generatedPassword?: string;
 };
@@ -113,6 +117,68 @@ export type Summary = {
   attention: number;
   cpu: number;
   memoryMiB: number;
+  groupBy?: string;
+  groups?: SummaryGroup[];
+};
+
+export type SummaryGroup = {
+  value: string;
+  machines: number;
+  running: number;
+  stopped: number;
+  attention: number;
+  cpu: number;
+  memoryMiB: number;
+};
+
+export type BulkAction = 'start' | 'stop' | 'snapshot' | 'delete';
+
+export type BulkResult = {
+  id: string;
+  name?: string;
+  ok: boolean;
+  state?: string;
+  snapshotId?: string;
+  error?: { code?: string; message?: string };
+};
+
+export type BulkResponse = {
+  project: string;
+  action: BulkAction;
+  dryRun?: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkResult[];
+};
+
+export type InventorySnapshot = Snapshot & { machineId: string; machineName: string; scheduleId?: string };
+
+export type SnapshotInventory = {
+  project: string;
+  items: InventorySnapshot[];
+  total: number;
+  machines: number;
+  errors?: { machineId: string; error: { code?: string; message?: string } }[];
+};
+
+export type Schedule = {
+  id: string;
+  machineId: string;
+  action: 'start' | 'stop' | 'restart' | 'snapshot';
+  cron: string;
+  timezone: string;
+  snapshotName?: string;
+  enabled: boolean;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  lastResult?: string;
+  lastError?: string;
+  retain?: number;
+  snapshotIds?: string[];
+  maxFailures?: number;
+  consecutiveFailures?: number;
+  disabledReason?: string;
 };
 
 export type CloudEvent = {
@@ -219,7 +285,7 @@ export type StorageInventory = {
   setup?: { state?: string };
 };
 
-export type List<T> = { items?: T[] };
+export type List<T> = { items?: T[]; nextCursor?: string };
 
 export type Readiness = {
   machineId: string;

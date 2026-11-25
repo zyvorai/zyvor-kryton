@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -18,6 +19,8 @@ type scheduleCreateRequest struct {
 	Cron         string `json:"cron"`
 	Timezone     string `json:"timezone"`
 	SnapshotName string `json:"snapshotName"`
+	Retain       int    `json:"retain"`
+	MaxFailures  int    `json:"maxFailures"`
 }
 
 type scheduleUpdateRequest struct {
@@ -26,6 +29,8 @@ type scheduleUpdateRequest struct {
 	Timezone     *string `json:"timezone"`
 	SnapshotName *string `json:"snapshotName"`
 	Enabled      *bool   `json:"enabled"`
+	Retain       *int    `json:"retain"`
+	MaxFailures  *int    `json:"maxFailures"`
 }
 
 func (s *Server) schedulesReady(w http.ResponseWriter, r *http.Request) bool {
@@ -86,7 +91,7 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sc, err := s.schedules.Create(schedule.Schedule{Project: req.Project, MachineID: req.MachineID, Action: req.Action,
-		Cron: req.Cron, Timezone: req.Timezone, SnapshotName: req.SnapshotName, CreatedBy: p.Name})
+		Cron: req.Cron, Timezone: req.Timezone, SnapshotName: req.SnapshotName, Retain: req.Retain, MaxFailures: req.MaxFailures, CreatedBy: p.Name})
 	if err != nil {
 		s.scheduleErr(w, r, err)
 		return
@@ -128,7 +133,7 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, r, err.Error())
 		return
 	}
-	up, err := s.schedules.Update(sc.ID, schedule.Patch{Action: req.Action, Cron: req.Cron, Timezone: req.Timezone, SnapshotName: req.SnapshotName, Enabled: req.Enabled})
+	up, err := s.schedules.Update(sc.ID, schedule.Patch{Action: req.Action, Cron: req.Cron, Timezone: req.Timezone, SnapshotName: req.SnapshotName, Enabled: req.Enabled, Retain: req.Retain, MaxFailures: req.MaxFailures})
 	if err != nil {
 		s.scheduleErr(w, r, err)
 		return
@@ -150,4 +155,32 @@ func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	s.events.Publish(r.Context(), "io.kryton.schedule.deleted", "schedules/"+sc.ID, map[string]any{"project": sc.Project, "scheduleId": sc.ID, "machineId": sc.MachineID})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// runSchedule executes a schedule immediately (to test it, or to take the
+// snapshot a schedule would take) without moving its next slot.
+func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request) {
+	if !s.schedulesReady(w, r) {
+		return
+	}
+	if s.runner == nil {
+		s.writeAPIError(w, r, http.StatusNotImplemented, "NOT_CONFIGURED", "running schedules on demand is not enabled")
+		return
+	}
+	sc, ok := s.scheduleFor(w, r, auth.Operator)
+	if !ok {
+		return
+	}
+	// A restart must not be cut in half by a client that gives up.
+	out, err := s.runner.RunNow(context.WithoutCancel(r.Context()), sc.ID)
+	switch {
+	case errors.Is(err, schedule.ErrBusy):
+		s.writeAPIError(w, r, http.StatusConflict, "SCHEDULE_BUSY", err.Error(), "Wait for the current run to finish.")
+	case errors.Is(err, schedule.ErrNotFound):
+		s.scheduleErr(w, r, err)
+	case err != nil:
+		s.writeErr(w, r, err)
+	default:
+		jsonResponse(w, http.StatusOK, out)
+	}
 }

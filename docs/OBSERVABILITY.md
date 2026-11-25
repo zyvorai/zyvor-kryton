@@ -15,7 +15,7 @@ Everything an operator needs to watch, audit and keep a Kryton control plane tid
 | [TTL](#machine-ttl-and-auto-delete) | `PUT /api/v1/machines/{id}/ttl` | operator |
 | [Quotas](#project-quotas) | `/api/v1/quotas…` | read: viewer, write: admin |
 
-State for webhooks, schedules and quotas is kept in JSON files (default `~/.kryton/webhooks.json`, `schedules.json`, `quotas.json`; the Helm chart points them at the `state` volume). Back those files up, or mount a persistent volume, if you need them to survive pod replacement.
+State for webhooks, schedules, quotas and delete protection is kept in JSON files (default `~/.kryton/webhooks.json`, `schedules.json`, `quotas.json`, `protections.json`; the Helm chart points them at the `state` volume). Back those files up, or mount a persistent volume, if you need them to survive pod replacement.
 
 ---
 
@@ -233,9 +233,32 @@ Behaviour worth knowing:
 - **Status.** Each schedule reports `nextRunAt`, `lastRunAt`, `lastResult` (`success`, `error`, `skipped`), `lastError` and `runCount`.
 - **Cleanup.** Deleting a machine deletes its schedules; a schedule whose machine has vanished is removed when it next fires.
 - Every run is written to the audit log (`actor: system:scheduler`, `action: schedule.run`) and emits `io.kryton.schedule.executed` plus the usual machine event (`machine.started`, `machine.stopped`, `machine.restarted`, `snapshot.created`) with `data.trigger: "schedule"`.
-- Limit: 100 schedules per project. Operator role on the project creates, edits and deletes; viewers can list.
+- Limit: 100 schedules per project. Operator role on the project creates, edits, runs and deletes; viewers can list.
 
 Persisted in `KRYTON_SCHEDULES_FILE`.
+
+### Snapshot retention
+
+A snapshot schedule with `retain: N` (1 to 100) keeps the newest N **usable** snapshots it took and deletes its older ones after each successful run.
+
+```bash
+krytonctl schedules create "$ID" --action snapshot --cron "30 2 * * *" --snapshot-name nightly --retain 7 --max-failures 3
+krytonctl schedules update <schedule-id> --retain 14
+```
+
+- Only snapshots the schedule took **while `retain` was set** are ever deleted (listed in `snapshotIds`). Manual snapshots, bulk snapshots, other schedules' snapshots and snapshots from before you set `retain` are never touched.
+- Nothing is deleted until N snapshots are `ready`, so snapshots that are still being created or that failed cannot push out the last good ones. On KubeVirt a new snapshot becomes ready after the run, so one extra snapshot normally exists between runs.
+- With `retain` set, a fixed `snapshotName` gets a `-YYYYMMDD-HHMMSS` suffix.
+- A snapshot that cannot be deleted leaves the run `success` with `lastError` starting `retention:`, and is retried on the next run. Retention deletions emit `io.kryton.snapshot.deleted` (`data.trigger: "schedule-retention"`) and an audit entry `snapshot.retention`.
+- At most 200 snapshot IDs are remembered per schedule; older ones beyond that are left on disk and no longer managed. Deleting a schedule keeps its snapshots.
+
+### Disable after repeated failures
+
+`maxFailures: N` disables a schedule after N consecutive failed scheduled runs: `enabled` becomes `false`, `disabledReason` says why and `io.kryton.schedule.disabled` is published. A successful run resets the count, skipped slots do not count, and enabling the schedule again starts from zero. `0` (default) never disables.
+
+### Run now
+
+`POST /api/v1/schedules/{id}/run` (`krytonctl schedules run <schedule-id>`) executes the action immediately, including retention, even when the schedule is disabled, so you can check a fix before re-enabling it. `nextRunAt` is unchanged and a failure does not count towards `maxFailures`. A run already in progress returns `409 SCHEDULE_BUSY`.
 
 ---
 
@@ -249,6 +272,8 @@ Persisted in `KRYTON_SCHEDULES_FILE`.
 | Extend, reset or cancel later | `krytonctl ttl <machine-id> 1440` (expire 24 h from now) or `krytonctl ttl <machine-id> 0` (never expire); `PUT /api/v1/machines/{id}/ttl` with `{"ttlMinutes": N}` |
 | Early warning | `io.kryton.machine.expiring` is published once when a machine comes within `KRYTON_TTL_WARN` (default `15m`, `0` disables) of expiry, so a webhook can notify the owner |
 | Expiry sweep | the reconciler deletes expired machines every `KRYTON_RECONCILE_INTERVAL` (default 30 s), emits `io.kryton.machine.expired` and audits it (`actor: system:ttl`, `action: machine.expire`) |
+
+A [delete-protected](API.md#fleet-operations) machine is not expired: the sweep leaves it in place, publishes `io.kryton.machine.expiry.blocked` and audits one `denied` entry; it is deleted on the first sweep after the protection is removed.
 
 The override is shown in `expiresAt` on machine reads (`null` means never). With a default TTL configured, an operator can still make a machine permanent with `ttl … 0`; the default is a hygiene net, not an enforcement mechanism. Maximum is 43200 minutes (30 days).
 
@@ -313,6 +338,7 @@ Rejections are counted in `kryton_quota_rejections_total`, appear in the audit l
 | `KRYTON_WEBHOOKS_FILE` | `~/.kryton/webhooks.json` | Subscriptions (delivery log beside it) |
 | `KRYTON_WEBHOOK_ALLOW_HOSTS` | unset | CIDRs / IPs / hostnames exempt from the SSRF guard |
 | `KRYTON_SCHEDULES_FILE` | `~/.kryton/schedules.json` | Schedules and TTL overrides |
+| `KRYTON_PROTECTIONS_FILE` | `~/.kryton/protections.json` | Delete protection |
 | `KRYTON_DEFAULT_TTL_MINUTES` | `0` | TTL for creates that omit it |
 | `KRYTON_TTL_WARN` | `15m` | Lead time for `machine.expiring` (`0` disables) |
 | `KRYTON_QUOTAS_FILE` | `~/.kryton/quotas.json` | Per-project quota overrides |

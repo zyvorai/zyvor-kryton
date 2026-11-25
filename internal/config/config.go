@@ -67,6 +67,7 @@ type Config struct {
 	WebhookAllowHosts []string
 	// Scheduled power actions and TTL hygiene.
 	SchedulesFile     string
+	ProtectionsFile   string
 	DefaultTTLMinutes int
 	TTLWarn           time.Duration
 	// Per-project quotas: QuotasFile holds per-project overrides; the
@@ -166,6 +167,7 @@ func Load() (Config, error) {
 		WebhooksFile:       os.Getenv("KRYTON_WEBHOOKS_FILE"),
 		WebhookAllowHosts:  splitCSV(os.Getenv("KRYTON_WEBHOOK_ALLOW_HOSTS")),
 		SchedulesFile:      os.Getenv("KRYTON_SCHEDULES_FILE"),
+		ProtectionsFile:    os.Getenv("KRYTON_PROTECTIONS_FILE"),
 		DefaultTTLMinutes:  intEnv("KRYTON_DEFAULT_TTL_MINUTES", 0),
 		TTLWarn:            durationEnv("KRYTON_TTL_WARN", 15*time.Minute),
 		QuotasFile:         os.Getenv("KRYTON_QUOTAS_FILE"),

@@ -3,6 +3,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, authHeaders, q } from './api';
+import { fetchAll, machinesPath, mergeEvent } from './lib/fleet';
+import { readEventStream } from './lib/sse';
 import type {
   Capabilities,
   CloudEvent,
@@ -18,8 +20,8 @@ import type {
   Summary,
 } from './types';
 
-export type Page = 'overview' | 'machines' | 'images' | 'jobs' | 'activity' | 'settings';
-export const PAGES: Page[] = ['overview', 'machines', 'images', 'jobs', 'activity', 'settings'];
+export type Page = 'overview' | 'machines' | 'fleet' | 'images' | 'jobs' | 'activity' | 'settings';
+export const PAGES: Page[] = ['overview', 'machines', 'fleet', 'images', 'jobs', 'activity', 'settings'];
 
 export type Toast = { id: number; message: string };
 export type ConfirmRequest = {
@@ -168,12 +170,12 @@ export function AppProvider({ children, onFatal }: { children: ReactNode; onFata
     if (!p) return;
     const [s, ms, ev] = await Promise.all([
       api<Summary>(`/api/v1/summary?project=${q(p)}`),
-      api<List<Machine>>(`/api/v1/machines?project=${q(p)}`),
+      fetchAll<Machine>(machinesPath(p), (path) => api<List<Machine>>(path)),
       api<List<CloudEvent>>('/api/v1/events?limit=100'),
     ]);
     if (projectRef.current !== p) return;
     setSummary(s);
-    setMachines(ms.items || []);
+    setMachines(ms);
     setEvents(ev.items || []);
     loadJobs();
   }, [loadJobs]);
@@ -283,29 +285,11 @@ export function AppProvider({ children, onFatal }: { children: ReactNode; onFata
         });
         if (!res.ok || !res.body) return;
         setStreamLive(true);
-        const reader = res.body.getReader();
-        const dec = new TextDecoder();
-        let buf = '';
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          const parts = buf.split('\n\n');
-          buf = parts.pop() || '';
-          for (const part of parts) {
-            if (!part.includes('event: cloudevent')) continue;
-            const line = part.split('\n').find((l) => l.startsWith('data: '));
-            if (!line) continue;
-            try {
-              const e = JSON.parse(line.slice(6)) as CloudEvent;
-              setEvents((cur) => [e, ...cur.filter((x) => x.id !== e.id)].slice(0, 100));
-              clearTimeout(debounce);
-              debounce = setTimeout(() => refreshProject().catch(() => {}), 400);
-            } catch {
-              /* ignore malformed frames */
-            }
-          }
-        }
+        await readEventStream(res.body, (e) => {
+          setEvents((cur) => mergeEvent(cur, e));
+          clearTimeout(debounce);
+          debounce = setTimeout(() => refreshProject().catch(() => {}), 400);
+        });
       } catch {
         /* aborted or stream unsupported */
       } finally {

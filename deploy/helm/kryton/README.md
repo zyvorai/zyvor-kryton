@@ -52,6 +52,8 @@ The two storage overlays are meant to be layered on top of `values.yaml` or `val
 
 ## Ephemeral local state
 
+Delete protection (`KRYTON_PROTECTIONS_FILE`) is kept on the same `emptyDir`, so it is lost when the pod is replaced while KubeVirt machines remain; mount a persistent volume at `/var/lib/kryton` if you rely on it.
+
 `readOnlyRootFilesystem: true` leaves krytond's default `$HOME/.kryton/{storage,settings}.json` unwritable, so the chart points `KRYTON_STORAGE_CONFIG_FILE`/`KRYTON_SETTINGS_CONFIG_FILE` at `/var/lib/kryton`, backed by an `emptyDir`. That means the operator-set default StorageClass and Settings-UI values (Atlas config, event webhook URL, etc.) do **not** survive a pod restart or reschedule — they reset to the Helm-configured defaults (`storageClass`, `eventWebhookURL` values) each time. This is consistent with the single-replica-only posture below; a durable fix would need a small PVC or a ConfigMap/Secret written back through the Kubernetes API instead of a local file.
 
 ## Single-replica today

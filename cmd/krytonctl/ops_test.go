@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -40,10 +41,60 @@ func TestQueryAndReorder(t *testing.T) {
 	if query("a", "") != "" {
 		t.Fatal("empty query should be empty string")
 	}
-	got := reorderFlags([]string{"https://x", "--event", "a.*", "--description=d", "--event", "b.*"})
-	want := []string{"--event", "a.*", "--description=d", "--event", "b.*", "https://x"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("reorder=%v", got)
+}
+
+func TestParseFlags(t *testing.T) {
+	cases := []struct {
+		args     []string
+		verbatim int
+		want     []string // positionals
+		project  string
+		force    bool
+		wait     bool
+	}{
+		{args: []string{"id", "--project", "ops", "--force"}, want: []string{"id"}, project: "ops", force: true},
+		{args: []string{"--force", "id", "--project=ops"}, want: []string{"id"}, project: "ops", force: true},
+		// A boolean flag must not swallow the next flag or argument.
+		{args: []string{"delete", "--force", "--project", "ops", "m1"}, want: []string{"delete", "m1"}, project: "ops", force: true},
+		{args: []string{"--force", "m1", "--wait"}, want: []string{"m1"}, force: true, wait: true},
+		{args: []string{"id", "--", "--project", "x"}, want: []string{"id", "--project", "x"}},
+		// job-run: flags before the command are ours, the rest is the guest's.
+		{args: []string{"id", "--wait", "ping", "--project", "x", "-n", "3"}, verbatim: 2, want: []string{"id", "ping", "--project", "x", "-n", "3"}, wait: true},
+		{args: []string{"id", "--", "-weird"}, verbatim: 2, want: []string{"id", "-weird"}},
+	}
+	for _, c := range cases {
+		f := flag.NewFlagSet("t", flag.ContinueOnError)
+		project := f.String("project", "", "")
+		force := f.Bool("force", false, "")
+		wait := f.Bool("wait", false, "")
+		parseFlags(f, c.args, c.verbatim)
+		if !reflect.DeepEqual(f.Args(), c.want) || *project != c.project || *force != c.force || *wait != c.wait {
+			t.Errorf("%v: args=%q project=%q force=%v wait=%v", c.args, f.Args(), *project, *force, *wait)
+		}
+	}
+}
+
+// Documented forms: the positional comes first and flags follow it.
+func TestFlagsAfterPositionalsReachTheServer(t *testing.T) {
+	c, got := capture(t)
+	createCommand(c, []string{"vm1", "--cpu", "2", "--label", "env=ci", "--project", "ops"})
+	machineCommand(c, "delete", []string{"m1", "--project", "ops"})
+	guestCommand(c, "restart", []string{"m1", "--force", "--no-wait", "--project", "ops"})
+	bulkCommand(c, []string{"delete", "--dry-run", "--selector", "env=tmp"})
+	if len(*got) != 4 {
+		t.Fatalf("requests = %+v", *got)
+	}
+	if g := (*got)[0]; g.Body["name"] != "vm1" || g.Body["project"] != "ops" || g.Body["compute"].(map[string]any)["cpu"] != float64(2) {
+		t.Errorf("create = %+v", g)
+	}
+	if g := (*got)[1]; g.Method != "DELETE" || g.RawQuery != "project=ops" {
+		t.Errorf("delete = %+v", g)
+	}
+	if g := (*got)[2]; g.RawQuery != "project=ops" || g.Body["force"] != true || g.Body["wait"] != false {
+		t.Errorf("restart = %+v", g)
+	}
+	if g := (*got)[3]; g.Body["dryRun"] != true || g.Body["selector"] != "env=tmp" || g.Body["action"] != "delete" {
+		t.Errorf("bulk = %+v", g)
 	}
 }
 

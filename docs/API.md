@@ -53,6 +53,8 @@ POST   /api/v1/machines/{id}/snapshots/{sid}/restore?project=<project>
 DELETE /api/v1/machines/{id}/snapshots/{sid}?project=<project>
 DELETE /api/v1/machines/{id}?project=<project>
 PUT    /api/v1/machines/{id}/ttl?project=<project>   # extend / clear TTL
+PUT    /api/v1/machines/{id}/protection?project=<project>  # delete protection
+GET    /api/v1/snapshots?project=<project>&olderThan=&selector=&limit=
 GET    /api/v1/events?type=&machineId=&since=&limit=
 GET    /api/v1/events/stream
 GET    /api/v1/audit                     # admin; filters + cursor pagination
@@ -71,6 +73,7 @@ POST   /api/v1/schedules
 GET    /api/v1/schedules/{id}
 PUT    /api/v1/schedules/{id}
 DELETE /api/v1/schedules/{id}
+POST   /api/v1/schedules/{id}/run         # run now
 GET    /api/v1/quotas
 GET    /api/v1/quotas/{project}
 PUT    /api/v1/quotas/{project}
@@ -126,6 +129,19 @@ krytonctl summary --group-by team
 
 ```bash
 krytonctl events --type 'io.kryton.machine.*' --machine 3f2c...
+```
+
+**Delete protection.** `PUT /api/v1/machines/{id}/protection` with `{"protected": true, "reason": "prod database"}` (operator) makes `DELETE`, bulk delete (including its dry run) and TTL expiry refuse the machine with `409 MACHINE_PROTECTED`; send `{"protected": false}` to remove it. Protected machines carry `protection` and drop `delete` from `allowedActions`. Start, stop, restart, snapshots and snapshot restore are unaffected. It guards against accidents, not against another operator of the project, and it only covers deletes that go through Kryton (not `kubectl delete` or `virsh undefine`). It is stored in `KRYTON_PROTECTIONS_FILE`; `krytond` refuses to start if that file is unreadable. **The Helm chart keeps it on an `emptyDir`, so protections are lost when the pod is replaced**; mount a persistent volume at `/var/lib/kryton` if you rely on them.
+
+```bash
+krytonctl protect 3f2c... --reason 'prod database'
+krytonctl unprotect 3f2c...
+```
+
+**Snapshot inventory.** `GET /api/v1/snapshots?project=` (viewer) lists snapshots across the project's machines, oldest first, with `machineName` and, for snapshots under [retention](OBSERVABILITY.md#snapshot-retention), `scheduleId`. Filters: `olderThan` (`36h`, `30d`), `selector`, `limit` (default 100, max 500; `total` counts all matches). It reads every matching machine, so more than 500 matches is `400`; machines that cannot be read are listed in `errors`. Providers without snapshots return `501`.
+
+```bash
+krytonctl snapshot-report --older-than 30d --selector env=ci
 ```
 
 ---
@@ -265,6 +281,8 @@ Finding `status` values: `pass` · `warn` · `fail`. CLI equivalent: `krytonctl 
 | `conditions` | array | Structured conditions |
 | `createdAt` / `updatedAt` | timestamp | Audit timestamps |
 | `expiresAt` | timestamp | TTL expiry when set |
+| `allowedActions` | string[] | Lifecycle actions accepted now |
+| `protection` | object | Present when delete protected (`reason`, `setBy`, `setAt`) |
 
 ### Create
 
@@ -354,6 +372,9 @@ Common event types:
 | `io.kryton.machine.restarted` | Scheduled restart completed |
 | `io.kryton.schedule.created` / `.deleted` / `.executed` | Scheduled action lifecycle and runs |
 | `io.kryton.quota.updated` | Project quota set or removed |
+| `io.kryton.machine.protection.enabled` / `.removed` | Delete protection changed |
+| `io.kryton.machine.expiry.blocked` | TTL expired on a protected machine |
+| `io.kryton.schedule.disabled` | Disabled after `maxFailures` consecutive failures |
 
 ---
 
@@ -371,7 +392,7 @@ All errors use a consistent envelope:
 }
 ```
 
-Common codes: `INVALID_REQUEST` · `NOT_FOUND` · `FORBIDDEN` · `CONFLICT` · `INTERNAL_ERROR` · `RATE_LIMITED` · `QUOTA_EXCEEDED` (403 or 409 on create, see [quotas](OBSERVABILITY.md#project-quotas)) · `WEBHOOK_URL_BLOCKED` · `WEBHOOK_LIMIT` · `SCHEDULE_LIMIT` · `NOT_CONFIGURED` (501).
+Common codes: `INVALID_REQUEST` · `NOT_FOUND` · `FORBIDDEN` · `CONFLICT` · `INTERNAL_ERROR` · `RATE_LIMITED` · `QUOTA_EXCEEDED` (403 or 409 on create, see [quotas](OBSERVABILITY.md#project-quotas)) · `WEBHOOK_URL_BLOCKED` · `WEBHOOK_LIMIT` · `SCHEDULE_LIMIT` · `SCHEDULE_BUSY` (409) · `MACHINE_PROTECTED` (409) · `NOT_CONFIGURED` (501).
 
 ---
 
